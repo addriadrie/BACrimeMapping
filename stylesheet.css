@@ -5,8 +5,8 @@ body {
 }
 
 .navbar-text {
-    font-family: 'Poppins'; 
-    text-decoration: underline;
+    font-family: 'Poppins';
+    color: #e8e3e1;
 }
 
 .nav-link {
@@ -23,6 +23,11 @@ body {
     border-bottom: 3px solid #e8e3e1;  
 }
 
+.nav-item a:hover {
+     color: #fff 
+     !important; 
+}
+
 .cbox-value {
     margin-left: 2%;
 }
@@ -32,9 +37,13 @@ body {
 }
 
 .footer { 
-    position: sticky;
+    position: static;
     bottom: 0;
     left: 0;
     width: 100%;
+    margin-top: 5%;
     background: #1d232c;
+    text-align: center;
+    padding-top: 1%;
+    padding-bottom: 1%;
 }
