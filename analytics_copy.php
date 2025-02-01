@@ -6,12 +6,42 @@ include('connect.php');
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
 
 // Condition for SQL queries (if a specific year is selected, add WHERE clause)
-$year_condition = ($year === 'all') ? "" : " WHERE YEAR(`DATE COMMITTED`) = $year";
+$year_condition = ($year === 'all') ? "" : "YEAR(`DATE COMMITTED`) = $year";
+$query = "SELECT COUNT(*) AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $query .= " WHERE $year_condition";
+}
 
 // Get total crime cases
-$total_cases_query = "SELECT COUNT(*) AS count FROM sanjuan $year_condition";
-$total_cases_result = $conn->query($total_cases_query);
-$total_cases = ($row = $total_cases_result->fetch_assoc()) ? (int) $row['count'] : 0;
+$total_query = "SELECT COUNT(*) AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $total_query .= " WHERE $year_condition";
+} 
+$total_result = $conn->query($total_query);
+$total_cases = ($total_result && $row = $total_result->fetch_assoc()) ? (int) $row['count'] : 0;
+
+// Get solved crime cases
+$solved_query = "SELECT COUNT(*) AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $solved_query .= " WHERE $year_condition AND `CASE STATUS` = 'Solved'";
+} else {
+    $solved_query .= " WHERE `CASE STATUS` = 'Solved'";
+}
+$solved_result = $conn->query($solved_query);
+$solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
+
+// Get total crime cases
+// $total_cases_query = "SELECT COUNT(*) AS count FROM sanjuan $year_condition";
+// $total_cases_result = $conn->query($total_cases_query);
+// $total_cases = ($row = $total_cases_result->fetch_assoc()) ? (int) $row['count'] : 0;
+// $solved_query .= (!empty($year_condition) ? " AND " : " WHERE ") . "`CASE STATUS` = 'Solved'";
+// $solved_result = $conn->query($query);
+// $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
+
+// Get solved crime cases
+// $solved_query .= (!empty($year_condition) ? " AND " : " WHERE ") . "`CASE STATUS` = 'Solved'";
+// $solved_result = $conn->query($query);
+// $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 // Close connection
 $conn->close();
@@ -149,14 +179,11 @@ $conn->close();
             <div class="card-body">
               <p class="card-title">Solved Cases</p>
               <?php 
-                // $result = $conn->query($solved_cases);                
-                // if ($result) {
-                //     $row = $result->fetch_assoc();
-                //     $count = $row['count']; // Fetch the count value
-                //     echo '<p class="card-text">' . $count . '</p>';
-                // } else {
-                //     echo '<p class="card-text">No Data</p>';
-                // }
+                if ($solved_cases > 0) {
+                  echo '<p class="card-text">' . $solved_cases . '</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
@@ -168,7 +195,6 @@ $conn->close();
               <p class="card-title">Total Cases</p>
                 <?php          
                 if ($total_cases > 0) {
-                    //$count = $row['count']; // Fetch the count value
                     echo '<p class="card-text">' . $total_cases . '</p>';
                 } else {
                     echo '<p class="card-text">No Data</p>';
