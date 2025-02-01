@@ -75,6 +75,24 @@ $crime_clearance = number_format($crime_clearance, 2);
 $crime_solution = ($total_cases > 0) ? ($solved_cases / $total_cases) * 100 : 0;
 $crime_solution = number_format($crime_solution, 2);
 
+// Get monthly trend
+// Fetch crime data by month
+$monthly_query = "SELECT month, crime_count, rank FROM ( SELECT `MONTH COMMITTED` AS month, COUNT(*) AS crime_count, RANK() OVER (ORDER BY COUNT(*) DESC) AS rank FROM sanjuan GROUP BY `MONTH COMMITTED` ) ranked_months WHERE rank <= 12 ORDER BY crime_count DESC;";
+$monthly_result = $conn->query($monthly_query);
+$monthly_trend = $monthly_result->fetch_assoc();
+// Extract data for Chart.js
+$months = [];
+$crime_counts = [];
+foreach ($monthly_result as $row) {
+    $months[] = $row['month'];
+    $crime_counts[] = $row['crime_count'];
+}
+// Convert data to JSON for JavaScript
+$months_json = json_encode($months);
+$crime_counts_json = json_encode($crime_counts);
+
+
+
 
 // Close connection
 $conn->close();
@@ -92,6 +110,8 @@ $conn->close();
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous"/>
     <!-- JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- CHART -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- STYLESHEET -->
     <link rel="stylesheet" href="stylesheet.css" />
     <!-- FONT -->
@@ -284,7 +304,7 @@ $conn->close();
             </div>
           </div>
         </div>
-        <!-- Card 4 -->
+        <!-- Card 4 / Solution -->
         <div class="col-lg-3 col-md-6 mb-1">
           <div class="card">
             <div class="card-body">
@@ -322,11 +342,12 @@ $conn->close();
             </div>
           </div>
         </div>
-        <!-- Card 3 -->
+        <!-- Card 3 / Peak Months-->
         <div class="col-lg-4 col-md-6">
           <div class="card" style="height: 300px;">
-            <div class="card-body d-flex justify-content-center align-items-center">
-              <h5 class="card-title">Card 3</h5>
+            <div class="card-body">
+              <p class="card-title">Peak Months of the Year</p>
+              <canvas id="monthlyTrend"></canvas>
             </div>
           </div>
         </div>
@@ -377,28 +398,57 @@ $conn->close();
       </div>
     </div>
 
-
-    
-
     <!-- FOOTER -->
     <footer class="footer">
       <p>Disclaimer: Lorem ipsum odor amet, consectetuer adipiscing elit.</p>
     </footer>
 
     <script>
-      // DATE AND TIME
-      var dt = new Date();
-      var options = {
-        timeZone: "Asia/Manila",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true, // For AM/PM format
-      };
-      document.getElementById("datetime").innerHTML =
-        dt.toLocaleString("en-US", options) + " PHT";
+        // DATE AND TIME
+        var dt = new Date();
+        var options = {
+          timeZone: "Asia/Manila",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true, // For AM/PM format
+        };
+        document.getElementById("datetime").innerHTML =
+          dt.toLocaleString("en-US", options) + " PHT";
+      
+        // MONTHLY TREND
+        // Retrieve data from PHP
+        const months = <?php echo $months_json; ?>;
+        const crimeCounts = <?php echo $crime_counts_json; ?>;
+
+        // Create the line chart
+        const ctx = document.getElementById('monthlyTrend').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'Crime Trends per Month',
+                    data: crimeCounts,
+                    borderColor: '#00CFFF', // Bright Cyan Line
+                    backgroundColor: 'rgba(0, 207, 255, 0.3)', // Transparent Cyan Fill
+                    borderWidth: 3,
+                    pointBackgroundColor: '#FFB400', // Yellow Dots on Data Points
+                    pointRadius: 5,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
     </script>
   </body>
 </html>
