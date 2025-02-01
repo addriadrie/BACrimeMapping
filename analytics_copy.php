@@ -12,13 +12,25 @@ if (!empty($year_condition)) {
     $query .= " WHERE $year_condition";
 }
 
-// Get total crime cases
-$total_query = "SELECT COUNT(*) AS count FROM sanjuan";
+// Get  crime cases
+$pending_query = "SELECT COUNT(*) AS count FROM sanjuan";
 if (!empty($year_condition)) {
-    $total_query .= " WHERE $year_condition";
-} 
-$total_result = $conn->query($total_query);
-$total_cases = ($total_result && $row = $total_result->fetch_assoc()) ? (int) $row['count'] : 0;
+    $pending_query .= " WHERE $year_condition AND `CASE STATUS` = 'Under Investigation'";
+} else {
+    $pending_query .= " WHERE `CASE STATUS` = 'Under Investigation'";
+}
+$pending_result = $conn->query($pending_query);
+$pending_cases = ($pending_result && $row = $pending_result->fetch_assoc()) ? (int) $row['count'] : 0;
+
+// Get cleared crime cases
+$cleared_query = "SELECT COUNT(*) AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $cleared_query .= " WHERE $year_condition AND `CASE STATUS` = 'Cleared'";
+} else {
+    $cleared_query .= " WHERE `CASE STATUS` = 'Cleared'";
+}
+$cleared_result = $conn->query($cleared_query);
+$cleared_cases = ($cleared_result && $row = $cleared_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 // Get solved crime cases
 $solved_query = "SELECT COUNT(*) AS count FROM sanjuan";
@@ -31,17 +43,38 @@ $solved_result = $conn->query($solved_query);
 $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 // Get total crime cases
-// $total_cases_query = "SELECT COUNT(*) AS count FROM sanjuan $year_condition";
-// $total_cases_result = $conn->query($total_cases_query);
-// $total_cases = ($row = $total_cases_result->fetch_assoc()) ? (int) $row['count'] : 0;
-// $solved_query .= (!empty($year_condition) ? " AND " : " WHERE ") . "`CASE STATUS` = 'Solved'";
-// $solved_result = $conn->query($query);
-// $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
+$total_query = "SELECT COUNT(*) AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $total_query .= " WHERE $year_condition";
+} 
+$total_result = $conn->query($total_query);
+$total_cases = ($total_result && $row = $total_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
-// Get solved crime cases
-// $solved_query .= (!empty($year_condition) ? " AND " : " WHERE ") . "`CASE STATUS` = 'Solved'";
-// $solved_result = $conn->query($query);
-// $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
+// Get crime volume
+// (INDEX + NI)/TOTAL
+$volume_query = "SELECT (SUM(CASE WHEN `CRIME CLASSIFICATION` = 'index' THEN 1 ELSE 0 END) + SUM(CASE WHEN `CRIME CLASSIFICATION` = 'non-index' THEN 1 ELSE 0 END)) / COUNT(*) * 100 AS count FROM sanjuan";
+if (!empty($year_condition)) {
+    $volume_query .= " WHERE $year_condition";
+}
+$volume_result = $conn->query($volume_query);
+$crime_volume = ($volume_result && $row = $volume_result->fetch_assoc()) ? number_format($row['count'], 2) : "0.00";
+
+// Get crime rate
+// (TOTAL/POPULATION)*100000
+$population = 126347; // as of 2020  
+$crime_rate = ($population > 0) ? ($total_cases / $population) * 100000 : 0;
+$crime_rate = number_format($crime_rate, 2);
+
+// Get crime clearance
+// (CLEARED/TOTAL)*100
+$crime_clearance = ($total_cases > 0) ? ($cleared_cases / $total_cases) * 100 : 0;
+$crime_clearance = number_format($crime_clearance, 2);
+
+// Get crime solution
+// (SOLVED/TOTAL)*100
+$crime_solution = ($total_cases > 0) ? ($solved_cases / $total_cases) * 100 : 0;
+$crime_solution = number_format($crime_solution, 2);
+
 
 // Close connection
 $conn->close();
@@ -143,14 +176,11 @@ $conn->close();
             <div class="card-body">
               <p class="card-title">Pending Cases</p>
               <?php 
-                // $result = $conn->query($pending_cases);                
-                // if ($result) {
-                //     $row = $result->fetch_assoc();
-                //     $count = $row['count']; // Fetch the count value
-                //     echo '<p class="card-text">' . $count . '</p>';
-                // } else {
-                //     echo '<p class="card-text">No Data</p>';
-                // }
+                if ($pending_cases > 0) {
+                  echo '<p class="card-text">' . $pending_cases . '</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
@@ -161,14 +191,11 @@ $conn->close();
             <div class="card-body">
               <p class="card-title">Cleared Cases</p>
               <?php 
-                // $result = $conn->query($cleared_cases);                
-                // if ($result) {
-                //     $row = $result->fetch_assoc();
-                //     $count = $row['count']; // Fetch the count value
-                //     echo '<p class="card-text">' . $count . '</p>';
-                // } else {
-                //     echo '<p class="card-text">No Data</p>';
-                // }
+                if ($cleared_cases > 0) {
+                  echo '<p class="card-text">' . $cleared_cases . '</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
@@ -209,51 +236,50 @@ $conn->close();
     <!-- 2ND ROW -->
     <div class="container mt-4">
       <div class="row">
-        <!-- Card 1 -->
+        <!-- Card 1 / Volume-->
         <div class="col-lg-3 col-md-6 mb-1">
           <div class="card">
             <div class="card-body">
-              <h5 class="card-title">Crime Volume</h5> 
+              <p class="card-title">Crime Volume</p>
               <?php 
                 // (INDEX + NI)/TOTAL
-                // $result = $conn->query($crime_volume);                
-                // if ($result) {
-                //     $row = $result->fetch_assoc();
-                //     $count = number_format($row['count'], 2); //round to 2 decimal places
-                //     echo '<p class="card-text">' . $count . '%</p>';
-                // } else {
-                //     echo '<p class="card-text">No Data</p>';
-                // }
+                if ($crime_volume > 0) {
+                  echo '<p class="card-text">' . $crime_volume . '%</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
         </div>
-        <!-- Card 2 -->
+        <!-- Card 2 / Rate -->
         <div class="col-lg-3 col-md-6 mb-1">
           <div class="card">
             <div class="card-body">
-              <h5 class="card-title">Crime Rate</h5><span>  per 100,000</span>
+              <p class="card-title">Crime Rate</p><span>  per 100,000</span>
               <?php 
                 // (TOTAL/POPULATION)*100000
-                // $result = $conn->query($crime_rate);                
-                // if ($result) {
-                //     $row = $result->fetch_assoc();
-                //     $count = number_format($row['count'], 2); //round to 2 decimal places
-                //     echo '<p class="card-text">' . $count . '%</p>';
-                // } else {
-                //     echo '<p class="card-text">No Data</p>';
-                // }
+                if ($crime_rate > 0) {
+                  echo '<p class="card-text">' . $crime_rate . '%</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
         </div>
-        <!-- Card 3 -->
+        <!-- Card 3 / Clearance -->
         <div class="col-lg-3 col-md-6 mb-1">
           <div class="card">
             <div class="card-body">
-              <h5 class="card-title">Crime Clearance Efficiency</h5>
+              <p class="card-title">Crime Clearance Efficiency</p>
               <?php 
                 // (CLEARED/TOTAL)*100
+                if ($crime_clearance > 0) {
+                  echo '<p class="card-text">' . $crime_clearance . '%</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
                 ?>
             </div>
           </div>
@@ -262,8 +288,15 @@ $conn->close();
         <div class="col-lg-3 col-md-6 mb-1">
           <div class="card">
             <div class="card-body">
-              <h5 class="card-title">Card 4</h5>
-              <p class="card-text">This is card 4 content.</p>
+              <p class="card-title">Crime Solution Efficiency</p>
+              <?php 
+                // (SOLVED/TOTAL)*100
+                if ($crime_solution > 0) {
+                  echo '<p class="card-text">' . $crime_solution . '%</p>';
+                } else {
+                    echo '<p class="card-text">No Data</p>';
+                }
+                ?>
             </div>
           </div>
         </div>
