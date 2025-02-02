@@ -91,14 +91,43 @@ $monthly_result = $conn->query($monthly_query);
 $monthly_trend = $monthly_result->fetch_assoc();
 // Extract data for Chart.js
 $months = [];
-$crime_counts = [];
+$monthly_crimes = [];
 foreach ($monthly_result as $row) {
     $months[] = $row['month'];
-    $crime_counts[] = $row['crime_count'];
+    $monthly_crimes[] = $row['crime_count'];
 }
 // Convert data to JSON for JavaScript
 $months_json = json_encode($months);
-$crime_counts_json = json_encode($crime_counts);
+$monthly_crimes_json = json_encode($monthly_crimes);
+
+//
+// Get weekly trend
+// Fetch crime data by month
+$weekly_query = "SELECT day, crime_count, rank FROM (
+                  SELECT `DAY COMMITTED` AS day, 
+                  COUNT(*) AS crime_count, 
+                  RANK() OVER (ORDER BY COUNT(*) DESC) 
+                  AS rank FROM sanjuan"; 
+if (!empty($year_condition)) {
+$weekly_query .= " WHERE $year_condition 
+        GROUP BY `DAY COMMITTED` ) ranked_days 
+        WHERE rank <= 7 ORDER BY crime_count DESC";
+} else {
+$weekly_query .= " GROUP BY `DAY COMMITTED` ) ranked_days
+        WHERE rank <= 7 ORDER BY crime_count DESC";
+}
+$weekly_result = $conn->query($weekly_query);
+$weekly_trend = $weekly_result->fetch_assoc();
+// Extract data for Chart.js
+$days = [];
+$weekly_crimes = [];
+foreach ($weekly_result as $row) {
+$days[] = $row['day'];
+$weekly_crimes[] = $row['crime_count'];
+}
+// Convert data to JSON for JavaScript
+$days_json = json_encode($days);
+$weekly_crimes_json = json_encode($weekly_crimes);
 
 
 // Close connection
@@ -425,70 +454,64 @@ $conn->close();
         document.getElementById("datetime").innerHTML =
           dt.toLocaleString("en-US", options) + " PHT";
 
+          document.addEventListener("DOMContentLoaded", function() {
+    
+            // WEEKLY TREND
+    const days = <?php echo $days_json; ?>;
+        const weeklyCounts = <?php echo $weekly_crimes_json; ?>;
 
-        // WEEKLY TREND
-        // Retrieve data from PHP
-        // const months = <?php echo $months_json; ?>;
-        // const crimeCounts = <?php echo $crime_counts_json; ?>;
-
-        // // Create the line chart
-        // const ctx = document.getElementById('monthlyTrend').getContext('2d');
-        // new Chart(ctx, {
-        //     type: 'line',
-        //     data: {
-        //         labels: months,
-        //         datasets: [{
-        //             label: 'Crime Trends per Month',
-        //             data: crimeCounts,
-        //             borderColor: '#00CFFF', // Bright Cyan Line
-        //             backgroundColor: 'rgba(0, 207, 255, 0.3)', // Transparent Cyan Fill
-        //             borderWidth: 3,
-        //             pointBackgroundColor: '#FFB400', // Yellow Dots on Data Points
-        //             pointRadius: 5,
-        //             fill: true
-        //         }]
-        //     },
-        //     options: {
-        //         responsive: true,
-        //         scales: {
-        //             y: {
-        //                 beginAtZero: true
-        //             }
-        //         }
-        //     }
-        // });
-      
-        // MONTHLY TREND
-        // Retrieve data from PHP
-        const months = <?php echo $months_json; ?>;
-        const crimeCounts = <?php echo $crime_counts_json; ?>;
-
-        // Create the line chart
-        const ctx = document.getElementById('monthlyTrend').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: months,
-                datasets: [{
-                    label: 'Crime Trends per Month',
-                    data: crimeCounts,
-                    borderColor: '#00CFFF', // Bright Cyan Line
-                    backgroundColor: 'rgba(0, 207, 255, 0.3)', // Transparent Cyan Fill
-                    borderWidth: 3,
-                    pointBackgroundColor: '#FFB400', // Yellow Dots on Data Points
-                    pointRadius: 5,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
+        const ctxWeekly = document.getElementById('weeklyTrend').getContext('2d');
+        new Chart(ctxWeekly, {
+          type: 'line',
+          data: {
+            labels: days,
+            datasets: [{
+              label: 'Crime Trends per Week',
+              data: weeklyCounts,
+              borderColor: '#00CFFF',
+              backgroundColor: 'rgba(0, 207, 255, 0.3)',
+              borderWidth: 3,
+              pointBackgroundColor: '#FFB400',
+              pointRadius: 5,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true }
             }
+          }
         });
+
+        // MONTHLY TREND
+        const months = <?php echo $months_json; ?>;
+        const monthlyCounts = <?php echo $monthly_crimes_json; ?>;
+
+        const ctxMonthly = document.getElementById('monthlyTrend').getContext('2d');
+        new Chart(ctxMonthly, {
+          type: 'line',
+          data: {
+            labels: months,
+            datasets: [{
+              label: 'Crime Trends per Month',
+              data: monthlyCounts,
+              borderColor: '#00CFFF',
+              backgroundColor: 'rgba(0, 207, 255, 0.3)',
+              borderWidth: 3,
+              pointBackgroundColor: '#FFB400',
+              pointRadius: 5,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      });
     </script>
   </body>
 </html>
