@@ -268,11 +268,62 @@ $conn->close();
   <style>
     @media print {
 
+      /* Hide specific sections */
+      header,
+      .navbar,
+      footer {
+        display: none !important;
+      }
+
+      /* Ensure Bootstrap grid is retained */
+      .container {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .row {
+        display: flex !important;
+        flex-wrap: wrap !important;
+      }
+
+      /* Ensure cards are properly positioned */
+      .col-lg-3,
+      .col-lg-4,
+      .col-lg-5,
+      .col-lg-7 {
+        flex: 0 0 auto !important;
+        width: 25% !important;
+        /* Adjust width for a perfect 4-column layout */
+      }
+
+      .col-lg-4 {
+        width: 33.33% !important;
+        /* Ensures 3-column layout remains */
+      }
+
+      .col-lg-5 {
+        width: 41.66% !important;
+        /* For 5-column layout */
+      }
+
+      .col-lg-7 {
+        width: 58.33% !important;
+        /* For 7-column layout */
+      }
+
+      /* Hide elements not needed in print */
       button,
       select {
-        display: none;
+        display: none !important;
+      }
+
+      /* Ensure charts are properly printed */
+      canvas {
+        max-width: 100% !important;
+        height: auto !important;
       }
     }
+
 
     .card-body {
       background-color: #1d232c;
