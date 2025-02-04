@@ -170,6 +170,47 @@ $offense_counts_json = json_encode($crime_counts);
 
 
 
+// CRIMES AGAINST CLASSIFICATION
+$against_query = "SELECT `CRIMES AGAINST`, COUNT(*) AS crime_count FROM sanjuan WHERE";
+if (!empty($year_condition)) {
+  $against_query .= " $year_condition AND";
+}
+$against_query .= " `CRIMES AGAINST` IN ('crimes against person', 'crimes against property', 'special laws')
+                  GROUP BY `CRIMES AGAINST`
+                  ORDER BY crime_count DESC";
+$against_result = $conn->query($against_query);
+$crime_against = [];
+$against_counts = [];
+while ($row = $against_result->fetch_assoc()) {
+  $crime_against[] = $row['CRIMES AGAINST'];
+  $against_counts[] = $row['crime_count'];
+}
+// Convert to JSON for JavaScript
+$crime_against_json = json_encode($crime_against);
+$against_counts_json = json_encode($against_counts);
+
+
+
+// HIGH RISK BRGY
+$highRisk_query = "SELECT Barangay, COUNT(*) AS Count, 
+                  DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS Rank
+                  FROM sanjuan WHERE 1
+                  " . (!empty($year_condition) ? " AND $year_condition" : "") . "
+                  GROUP BY Barangay
+                  ORDER BY Count DESC
+                  LIMIT 10;";
+$highRisk_result = $conn->query($highRisk_query);
+$brgy_list = [];
+while ($row = $highRisk_result->fetch_assoc()) {
+  $brgy_list[] = [
+    'rank' => $row['Rank'],
+    'barangay' => $row['Barangay']
+  ];
+}
+$brgy_json = json_encode($brgy_list);
+
+
+
 // Close connection
 $conn->close();
 
@@ -189,6 +230,7 @@ $conn->close();
   <!-- JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
   <!-- STYLESHEET -->
   <link rel="stylesheet" href="stylesheet.css" />
   <!-- FONT -->
@@ -444,11 +486,12 @@ $conn->close();
           </div>
         </div>
       </div>
-      <!-- Smaller Card -->
+      <!-- CRIMES AGAINST -->
       <div class="col-lg-5">
         <div class="card" style="height: 300px;">
-          <div class="card-body d-flex justify-content-center align-items-center">
-            <h5 class="card-title">Smaller Card</h5>
+          <div class="card-body">
+            <p class="card-title">Crime Classification</p>
+            <canvas id="crimeAgainst"></canvas>
           </div>
         </div>
       </div>
@@ -458,11 +501,12 @@ $conn->close();
   <!-- 5TH ROW -->
   <div class="container mt-4">
     <div class="row">
-      <!-- Smaller Card -->
+      <!-- HIGH RISK BRGY -->
       <div class="col-lg-5">
-        <div class="card" style="height: 300px;"> <!-- Same height as the larger card -->
-          <div class="card-body d-flex justify-content-center align-items-center">
-            <h5 class="card-title">Smaller Card</h5>
+        <div class="card" style="height: 300px;">
+          <div class="card-body">
+            <p class="card-title">High Risk Barangays</p>
+            <ul id="brgyList" style="list-style-type: none; padding-left: 0;"></ul>
           </div>
         </div>
       </div>
@@ -497,6 +541,18 @@ $conn->close();
     document.getElementById("datetime").innerHTML =
       dt.toLocaleString("en-US", options) + " PHT";
 
+
+    // HIGH RISK BRGY
+    const brgyData = <?php echo $brgy_json; ?>;
+    const brgyList = document.getElementById('brgyList');
+
+    brgyData.forEach(item => {
+      let listItem = document.createElement("li");
+      listItem.textContent = `${item.rank}. ${item.barangay}`;
+      brgyList.appendChild(listItem);
+    });
+
+
     document.addEventListener("DOMContentLoaded", function () {
 
 
@@ -529,6 +585,7 @@ $conn->close();
       });
 
 
+
       // WEEKLY TREND
       const days = <?php echo $days_json; ?>;
       const weeklyCounts = <?php echo $weekly_crimes_json; ?>;
@@ -556,6 +613,7 @@ $conn->close();
           }
         }
       });
+
 
 
       // MONTHLY TREND
@@ -587,12 +645,10 @@ $conn->close();
       });
 
 
+
       // OFFENSES PER BRGY
       const offenses = <?php echo $offense_json; ?>;
       const offenseCounts = <?php echo $offense_counts_json; ?>;
-
-      console.log("Offenses:", offenses);
-      console.log("Crime Counts:", offenseCounts);
 
       const ctxOffenses = document.getElementById('offensesChart').getContext('2d');
       new Chart(ctxOffenses, {
@@ -625,6 +681,61 @@ $conn->close();
             }
           }
         }
+      });
+
+
+
+      // CRIME AGAINST PIE CHART
+      const crimeAgainst = <?php echo $crime_against_json; ?>;
+      const againstCounts = <?php echo $against_counts_json; ?>;
+
+      const ctxAgainst = document.getElementById('crimeAgainst').getContext('2d');
+      new Chart(ctxAgainst, {
+        type: 'pie',
+        data: {
+          labels: crimeAgainst,
+          datasets: [{
+            label: 'Number of Crimes',
+            data: againstCounts,
+            backgroundColor: [
+              'rgba(255, 99, 132, 0.6)',  // Red
+              'rgba(54, 162, 235, 0.6)',  // Blue
+              'rgba(255, 206, 86, 0.6)'   // Yellow
+            ],
+            borderColor: [
+              'rgba(255, 99, 132, 1)',
+              'rgba(54, 162, 235, 1)',
+              'rgba(255, 206, 86, 1)'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'top'
+            },
+            tooltip: {
+              callbacks: {
+                label: function (tooltipItem) {
+                  return crimeAgainst[tooltipItem.dataIndex] + ': ' + againstCounts[tooltipItem.dataIndex];
+                }
+              }
+            },
+            datalabels: { // Enable datalabels plugin
+              color: '#fff', // Text color
+              anchor: 'center', // Position inside the pie slice
+              align: 'center',
+              font: {
+                weight: 'bold',
+                size: 14
+              },
+              formatter: (value) => value // Show the count inside the chart
+            }
+          }
+        },
+        plugins: [ChartDataLabels] // Register the datalabels plugin
       });
 
 
