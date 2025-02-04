@@ -479,10 +479,9 @@ $conn->close();
     <div class="row">
       <!-- OFFENSES PER BRGY -->
       <div class="col-lg-7">
-        <div class="card" style="height: 500px;">
+        <div class="card" style="height: 300px;">
           <div class="card-body">
             <p class="card-title">Number of Offenses per Barangay</p>
-            <canvas id="offensesChart"></canvas>
           </div>
         </div>
       </div>
@@ -510,11 +509,12 @@ $conn->close();
           </div>
         </div>
       </div>
-      <!-- Larger Card -->
+      <!-- PREVALENT OFFENSES -->
       <div class="col-lg-7">
-        <div class="card" style="height: 300px;"> <!-- Fixed height for consistency -->
-          <div class="card-body d-flex justify-content-center align-items-center">
-            <h5 class="card-title">Larger Card</h5>
+        <div class="card" style="height: 300px;">
+          <div class="card-body">
+            <p class="card-title">Prevalent Offenses per Barangay</p>
+            <canvas id="offensesChart"></canvas>
           </div>
         </div>
       </div>
@@ -646,45 +646,6 @@ $conn->close();
 
 
 
-      // OFFENSES PER BRGY
-      const offenses = <?php echo $offense_json; ?>;
-      const offenseCounts = <?php echo $offense_counts_json; ?>;
-
-      const ctxOffenses = document.getElementById('offensesChart').getContext('2d');
-      new Chart(ctxOffenses, {
-        type: 'bar',
-        data: {
-          labels: offenses,
-          datasets: [{
-            label: 'Number of Crimes',
-            data: offenseCounts,
-            backgroundColor: 'rgba(0, 123, 255, 0.6)',
-            borderColor: 'rgba(0, 123, 255, 1)',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: {
-              beginAtZero: true,
-              title: {
-                display: true,
-                text: 'Number of Crimes'
-              }
-            },
-            x: {
-              title: {
-                display: true,
-                text: 'Offense Type'
-              }
-            }
-          }
-        }
-      });
-
-
-
       // CRIME AGAINST PIE CHART
       const crimeAgainst = <?php echo $crime_against_json; ?>;
       const againstCounts = <?php echo $against_counts_json; ?>;
@@ -734,10 +695,50 @@ $conn->close();
               formatter: (value) => value // Show the count inside the chart
             }
           }
+
         },
         plugins: [ChartDataLabels] // Register the datalabels plugin
       });
 
+
+
+      // OFFENSES PER BRGY
+      const offenses = <?php echo $offense_json; ?>;
+      const offenseCounts = <?php echo $offense_counts_json; ?>;
+
+      const ctxOffenses = document.getElementById('offensesChart').getContext('2d');
+      new Chart(ctxOffenses, {
+        type: 'bar',
+        data: {
+          labels: offenses,
+          datasets: [{
+            label: 'Number of Crimes',
+            data: offenseCounts,
+            backgroundColor: 'rgba(0, 123, 255, 0.6)',
+            borderColor: 'rgba(0, 123, 255, 1)',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          indexAxis: 'y',
+          scales: {
+            x: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Number of Crimes'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Offense Type'
+              }
+            }
+          }
+        }
+      });
 
     });
 
