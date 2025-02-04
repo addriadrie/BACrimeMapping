@@ -150,26 +150,6 @@ $monthly_crimes_json = json_encode($monthly_crimes);
 
 
 
-// OFFENSES PER BRGY
-$offenses_query = "SELECT OFFENSE, COUNT(*) AS crime_count FROM sanjuan";
-if (!empty($year_condition)) {
-  $offenses_query .= " WHERE $year_condition";
-}
-$offenses_query .= " GROUP BY OFFENSE ORDER BY crime_count DESC";
-$offenses_result = $conn->query($offenses_query);
-// Extract data for Chart.js
-$offenses = [];
-$crime_counts = [];
-while ($row = $offenses_result->fetch_assoc()) {
-  $offenses[] = $row['OFFENSE'];
-  $crime_counts[] = $row['crime_count'];
-}
-// Convert to JSON
-$offense_json = json_encode($offenses);
-$offense_counts_json = json_encode($crime_counts);
-
-
-
 // CRIMES AGAINST CLASSIFICATION
 $against_query = "SELECT `CRIMES AGAINST`, COUNT(*) AS crime_count FROM sanjuan WHERE";
 if (!empty($year_condition)) {
@@ -210,6 +190,52 @@ while ($row = $highRisk_result->fetch_assoc()) {
 $brgy_json = json_encode($brgy_list);
 
 
+
+// PREVALENT OFFENSES
+$offenses_query = "SELECT OFFENSE, COUNT(*) AS crime_count FROM sanjuan";
+if (!empty($year_condition)) {
+  $offenses_query .= " WHERE $year_condition";
+}
+$offenses_query .= " GROUP BY OFFENSE ORDER BY crime_count DESC";
+$offenses_result = $conn->query($offenses_query);
+// Extract data for Chart.js
+$offenses = [];
+$crime_counts = [];
+while ($row = $offenses_result->fetch_assoc()) {
+  $offenses[] = $row['OFFENSE'];
+  $crime_counts[] = $row['crime_count'];
+}
+// Convert to JSON
+$offense_json = json_encode($offenses);
+$offense_counts_json = json_encode($crime_counts);
+
+
+
+// OFFENSES PER BRGY
+// Fetch all barangays
+$barangays_query = "SELECT DISTINCT BARANGAY FROM sanjuan";
+$barangays_result = $conn->query($barangays_query);
+$barangays = [];
+while ($row = $barangays_result->fetch_assoc()) {
+  $barangays[] = $row['BARANGAY'];
+}
+
+// Fetch all offense data grouped by barangay
+$offense_query = "SELECT BARANGAY, OFFENSE, COUNT(*) AS crime_count FROM sanjuan 
+                  GROUP BY BARANGAY, OFFENSE ORDER BY BARANGAY";
+$offense_result = $conn->query($offense_query);
+
+$offense_data = [];
+while ($row = $offense_result->fetch_assoc()) {
+  $barangay = $row['BARANGAY'];
+  if (!isset($offense_data[$barangay])) {
+    $offense_data[$barangay] = [];
+  }
+  $offense_data[$barangay][] = [
+    "offense" => $row['OFFENSE'],
+    "crime_count" => $row['crime_count']
+  ];
+}
 
 // Close connection
 $conn->close();
@@ -482,6 +508,14 @@ $conn->close();
         <div class="card" style="height: 300px;">
           <div class="card-body">
             <p class="card-title">Number of Offenses per Barangay</p>
+            <!-- CONTROLS -->
+            <select id="barangayDropdown">
+              <option value="">-- Select Barangay --</option>
+              <?php foreach ($barangays as $barangay): ?>
+                <option value="<?= htmlspecialchars($barangay) ?>"><?= htmlspecialchars($barangay) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <canvas id="offensePerBrgyChart"></canvas>
           </div>
         </div>
       </div>
@@ -541,6 +575,53 @@ $conn->close();
     document.getElementById("datetime").innerHTML =
       dt.toLocaleString("en-US", options) + " PHT";
 
+    const offenseData = <?= json_encode($offense_data) ?>;
+    let chartInstance;
+    // Function to update chart
+    function updateChart(barangay) {
+      if (!offenseData[barangay]) {
+        alert("No data available for this barangay.");
+        return;
+      }
+
+      let labels = offenseData[barangay].map(entry => entry.offense);
+      let counts = offenseData[barangay].map(entry => entry.crime_count);
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      let ctx = document.getElementById("offensePerBrgyChart").getContext("2d");
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Number of Offenses",
+            data: counts,
+            backgroundColor: "rgba(75, 192, 192, 0.6)",
+            borderColor: "rgba(75, 192, 192, 1)",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          scales: {
+            x: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // Handle dropdown change
+    document.getElementById("barangayDropdown").addEventListener("change", function () {
+      let selectedBarangay = this.value;
+      if (selectedBarangay) {
+        updateChart(selectedBarangay);
+      }
+    });
+
 
     // HIGH RISK BRGY
     const brgyData = <?php echo $brgy_json; ?>;
@@ -554,7 +635,6 @@ $conn->close();
 
 
     document.addEventListener("DOMContentLoaded", function () {
-
 
       // DAILY TREND
       const time = <?php echo $time_json; ?>;
@@ -659,9 +739,9 @@ $conn->close();
             label: 'Number of Crimes',
             data: againstCounts,
             backgroundColor: [
-              'rgba(255, 99, 132, 0.6)',  // Red
-              'rgba(54, 162, 235, 0.6)',  // Blue
-              'rgba(255, 206, 86, 0.6)'   // Yellow
+              'rgba(255, 99, 132, 0.6)',
+              'rgba(54, 162, 235, 0.6)',
+              'rgba(255, 206, 86, 0.6)'
             ],
             borderColor: [
               'rgba(255, 99, 132, 1)',
@@ -702,7 +782,7 @@ $conn->close();
 
 
 
-      // OFFENSES PER BRGY
+      // PREVALENT OFFENSES
       const offenses = <?php echo $offense_json; ?>;
       const offenseCounts = <?php echo $offense_counts_json; ?>;
 
