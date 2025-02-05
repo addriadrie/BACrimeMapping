@@ -3,9 +3,18 @@
 include('connect.php');
 
 
-// Get the selected year
+// Get available years from the database
+$dateFilter_query = "SELECT DISTINCT YEAR(dateCommitted) AS year FROM crimemapping 
+                    WHERE YEAR(dateCommitted) ORDER BY year DESC";
+$dateFilter_result = $conn->query($dateFilter_query);
+
+$years = [];
+if ($dateFilter_result->num_rows > 0) {
+  while ($row = $dateFilter_result->fetch_assoc()) {
+    $years[] = $row['year'];
+  }
+}
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
-// Condition for SQL queries (if a specific year is selected, add WHERE clause)
 $year_condition = ($year === 'all') ? "" : "YEAR(`dateCommitted`) = $year";
 
 
@@ -154,8 +163,8 @@ $incidentCount_json = json_encode($incidentCount);
 
 // CRIMES AGAINST CLASSIFICATION
 $against_query = "SELECT `crimeAgainst`, COUNT(*) AS crime_count FROM crimemapping WHERE"
-                . (!empty($year_condition) ? " $year_condition AND" : "")
-                . " `crimeAgainst` IN ('crimes against person', 'crimes against property', 'special laws')
+  . (!empty($year_condition) ? " $year_condition AND" : "")
+  . " `crimeAgainst` IN ('crimes against person', 'crimes against property', 'special laws')
                   GROUP BY `crimeAgainst`
                   ORDER BY crime_count DESC";
 $against_result = $conn->query($against_query);
@@ -305,7 +314,6 @@ $conn->close();
       }
     }
 
-
     .card-body {
       background-color: #1d232c;
       color: #e8e3e1;
@@ -362,12 +370,13 @@ $conn->close();
       <form method="GET">
         <label for="year">Select Year:</label>
         <select name="year" id="year" onchange="this.form.submit()">
-          <option value="all" <?= (!isset($_GET['year']) || $_GET['year'] == 'all') ? 'selected' : '' ?>>All Time</option>
-          <option value="2019" <?= (isset($_GET['year']) && $_GET['year'] == '2019') ? 'selected' : '' ?>>2019</option>
-          <option value="2020" <?= (isset($_GET['year']) && $_GET['year'] == '2020') ? 'selected' : '' ?>>2020</option>
-          <option value="2021" <?= (isset($_GET['year']) && $_GET['year'] == '2021') ? 'selected' : '' ?>>2021</option>
-          <option value="2022" <?= (isset($_GET['year']) && $_GET['year'] == '2022') ? 'selected' : '' ?>>2022</option>
-          <option value="2023" <?= (isset($_GET['year']) && $_GET['year'] == '2023') ? 'selected' : '' ?>>2023</option>
+          <option value="all" <?= ($year == 'all') ? 'selected' : '' ?>>All Time</option>
+          <?php
+          foreach ($years as $yr) {
+            $selected = ($year == $yr) ? 'selected' : '';
+            echo "<option value='$yr' $selected>$yr</option>";
+          }
+          ?>
         </select>
       </form>
       <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
@@ -795,15 +804,15 @@ $conn->close();
                 }
               }
             },
-            datalabels: { 
-              color: '#fff', 
-              anchor: 'center', 
+            datalabels: {
+              color: '#fff',
+              anchor: 'center',
               align: 'center',
               font: {
                 weight: 'bold',
                 size: 14
               },
-              formatter: (value) => value 
+              formatter: (value) => value
             }
           }
 
