@@ -576,7 +576,7 @@ $conn->close();
     <div class="row">
       <!-- HIGH RISK BRGY -->
       <div class="col-lg-5">
-        <div class="card" style="height: 300px;">
+        <div class="card h-100">
           <div class="card-body">
             <p class="card-title">High Risk Barangays</p>
             <ul id="brgyList" style="list-style-type: none; padding-left: 0;"></ul>
@@ -585,7 +585,7 @@ $conn->close();
       </div>
       <!-- OFFENSES PER BRGY-->
       <div class="col-lg-7">
-        <div class="card" style="height: 300px;">
+        <div class="card h-100">
           <div class="card-body">
             <p class="card-title">Number of Offenses per Barangay</p>
             <!-- CONTROLS -->
@@ -813,7 +813,7 @@ $conn->close();
     });
 
 
-    
+
     // HIGH RISK BRGY
     const brgyData = <?php echo $brgy_json; ?>;
     const brgyList = document.getElementById('brgyList');
