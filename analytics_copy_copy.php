@@ -229,6 +229,85 @@ while ($row = $offense_result->fetch_assoc()) {
   ];
 }
 
+
+
+// UPLOAD DATA
+// Check if a file is uploaded
+if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
+  $file = $_FILES['csv_file']['tmp_name'];
+
+  // Open the file
+  if (($handle = fopen($file, "r")) !== FALSE) {
+    fgetcsv($handle); // Skip the header row
+
+    while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+      // Ensure there are enough columns
+      if (count($data) < 14) {
+        continue; // Skip rows with missing data
+      }
+
+      // Assign values (assuming CSV order matches the database)
+      list(
+        $barangay,
+        $typeOfPlace,
+        $dateCommitted,
+        $timeCommitted,
+        $incidentType,
+        $crimeAgainst,
+        $crimeClassification,
+        $offense,
+        $offenseType,
+        $modus,
+        $caseStatus,
+        $lat,
+        $lng
+      ) = $data;
+
+      // Insert into database (or update existing records)
+      $stmt = $conn->prepare("INSERT INTO crimemapping 
+              (barangay, typeOfPlace, dateCommitted, timeCommitted, incidentType, crimeAgainst, 
+              crimeClassification, offense, offenseType, modus, caseStatus, lat, lng) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+              typeOfPlace = VALUES(typeOfPlace), 
+              incidentType = VALUES(incidentType), 
+              crimeAgainst = VALUES(crimeAgainst), 
+              crimeClassification = VALUES(crimeClassification), 
+              offense = VALUES(offense), 
+              offenseType = VALUES(offenseType), 
+              modus = VALUES(modus), 
+              caseStatus = VALUES(caseStatus), 
+              lat = VALUES(lat), 
+              lng = VALUES(lng)");
+
+      $stmt->bind_param(
+        "sssssssssssss",
+        $barangay,
+        $typeOfPlace,
+        $dateCommitted,
+        $timeCommitted,
+        $incidentType,
+        $crimeAgainst,
+        $crimeClassification,
+        $offense,
+        $offenseType,
+        $modus,
+        $caseStatus,
+        $lat,
+        $lng
+      );
+      $stmt->execute();
+    }
+    fclose($handle);
+    echo "CSV file successfully uploaded and database updated!";
+  } else {
+    echo "Error opening the CSV file.";
+  }
+} else if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  // Only show this message if a user attempted to upload a file but failed
+  echo "Error: No CSV file uploaded or invalid file.";
+}
+
 // Close connection
 $conn->close();
 
@@ -379,8 +458,13 @@ $conn->close();
           ?>
         </select>
       </form>
-      <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
+      <div class="ms-auto">
+        <button class="btn btn-primary" onclick="document.getElementById('csvUpload').click();">Update Data</button>
+        <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
+      </div>
     </div>
+    <!-- Hidden File Input -->
+    <input type="file" id="csvUpload" accept=".csv" style="display: none;" onchange="uploadCSV()">
   </div>
 
   </div>
@@ -605,7 +689,6 @@ $conn->close();
               <?php endforeach; ?>
             </select>
             <canvas id="offensePerBrgyChart"></canvas>
-
           </div>
         </div>
       </div>
@@ -879,6 +962,34 @@ $conn->close();
         updateChart(selectedBarangay);
       }
     });
+
+
+
+    function uploadCSV() {
+      let fileInput = document.getElementById("csvUpload");
+      let file = fileInput.files[0];
+
+      if (!file) {
+        alert("Please select a CSV file.");
+        return;
+      }
+
+      let formData = new FormData();
+      formData.append("csv_file", file);
+
+      fetch("upload_csv.php", {
+        method: "POST",
+        body: formData
+      })
+        .then(response => response.text())
+        .then(data => {
+          alert(data);  // Show success or error message
+          fileInput.value = "";  // Reset input field
+        })
+        .catch(error => console.error("Error:", error));
+    }
+
+
 
     function printReport() {
       window.print();
