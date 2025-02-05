@@ -6,55 +6,45 @@ include('connect.php');
 // Get the selected year
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
 // Condition for SQL queries (if a specific year is selected, add WHERE clause)
-$year_condition = ($year === 'all') ? "" : "YEAR(`DATE COMMITTED`) = $year";
+$year_condition = ($year === 'all') ? "" : "YEAR(`dateCommitted`) = $year";
 
 
 // PENDING CASES
-$pending_query = "SELECT COUNT(*) AS count FROM sanjuan WHERE";
-if (!empty($year_condition)) {
-  $pending_query .= " $year_condition AND";
-}
-$pending_query .= " `CASE STATUS` = 'Under Investigation'";
+$pending_query = "SELECT COUNT(*) AS count FROM crimemapping WHERE"
+  . (!empty($year_condition) ? " $year_condition AND" : "")
+  . " `caseStatus` = 'Under Inve'";
 $pending_result = $conn->query($pending_query);
 $pending_cases = ($pending_result && $row = $pending_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 
 // CLEARED CASES
-$cleared_query = "SELECT COUNT(*) AS count FROM sanjuan WHERE";
-if (!empty($year_condition)) {
-  $cleared_query .= "  $year_condition AND";
-}
-$cleared_query .= " `CASE STATUS` = 'Cleared'";
+$cleared_query = "SELECT COUNT(*) AS count FROM crimemapping WHERE"
+  . (!empty($year_condition) ? "  $year_condition AND" : "")
+  . " `caseStatus` = 'Cleared'";
 $cleared_result = $conn->query($cleared_query);
 $cleared_cases = ($cleared_result && $row = $cleared_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 
 // SOLVED CASES
-$solved_query = "SELECT COUNT(*) AS count FROM sanjuan WHERE";
-if (!empty($year_condition)) {
-  $solved_query .= " $year_condition AND";
-}
-$solved_query .= " `CASE STATUS` = 'Solved'";
+$solved_query = "SELECT COUNT(*) AS count FROM crimemapping WHERE"
+  . (!empty($year_condition) ? " $year_condition AND" : "")
+  . " `caseStatus` = 'Solved'";
 $solved_result = $conn->query($solved_query);
 $solved_cases = ($solved_result && $row = $solved_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 
 // TOTAL CASES
-$total_query = "SELECT COUNT(*) AS count FROM sanjuan";
-if (!empty($year_condition)) {
-  $total_query .= " WHERE $year_condition";
-}
+$total_query = "SELECT COUNT(*) AS count FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "");
 $total_result = $conn->query($total_query);
 $total_cases = ($total_result && $row = $total_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
 
 // CRIME VOLUME = (INDEX + NI)/TOTAL
-$volume_query = "SELECT (SUM(CASE WHEN `CRIME CLASSIFICATION` = 'index' THEN 1 ELSE 0 END) + 
-                  SUM(CASE WHEN `CRIME CLASSIFICATION` = 'non-index' THEN 1 ELSE 0 END)) / 
-                  COUNT(*) * 100 AS count FROM sanjuan";
-if (!empty($year_condition)) {
-  $volume_query .= " WHERE $year_condition";
-}
+$volume_query = "SELECT (SUM(CASE WHEN `crimeClassification` = 'index' THEN 1 ELSE 0 END) + 
+                  SUM(CASE WHEN `crimeClassification` = 'non-index' THEN 1 ELSE 0 END)) / 
+                  COUNT(*) * 100 AS count FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "");
 $volume_result = $conn->query($volume_query);
 $crime_volume = ($volume_result && $row = $volume_result->fetch_assoc()) ? number_format($row['count'], 2) : "0.00";
 
@@ -77,104 +67,114 @@ $crime_solution = number_format($crime_solution, 2);
 
 // DAILY TREND
 $daily_query = "SELECT time, crime_count, rank FROM (
-                SELECT `TIME COMMITTED` AS time, 
+                SELECT `timeCommitted` AS time, 
                       COUNT(*) AS crime_count, 
                       RANK() OVER (ORDER BY COUNT(*) DESC) AS rank 
-                FROM sanjuan";
-if (!empty($year_condition)) {
-  $daily_query .= " WHERE $year_condition";
-}
-$daily_query .= " GROUP BY `TIME COMMITTED` ) ranked_time WHERE rank <= 10 ORDER BY crime_count DESC";
+                FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "");
+$daily_query .= " GROUP BY `timeCommitted`) ranked_time WHERE rank <= 10 ORDER BY crime_count DESC";
 $daily_result = $conn->query($daily_query);
 // Extract Data for Chart.js
-$times = [];
-$daily_crimes = [];
+$peakTimes = [];
+$dailyTrends = [];
 foreach ($daily_result as $row) {
-  $times[] = $row['time'];
-  $daily_crimes[] = $row['crime_count'];
+  $peakTimes[] = $row['time'];
+  $dailyTrends[] = $row['crime_count'];
 }
 // Convert Data to JSON for JavaScript
-$time_json = json_encode($times);
-$daily_crimes_json = json_encode($daily_crimes);
+$peakTimes_json = json_encode($peakTimes);
+$dailyTrends_json = json_encode($dailyTrends);
 
 
 
 // WEEKLY TREND
 $weekly_query = "SELECT day, crime_count, rank FROM (
-                SELECT `DAY COMMITTED` AS day, 
+                SELECT DAYNAME(`dateCommitted`) AS day, 
                 COUNT(*) AS crime_count, 
                 RANK() OVER (ORDER BY COUNT(*) DESC) 
-                AS rank FROM sanjuan";
-if (!empty($year_condition)) {
-  $weekly_query .= " WHERE $year_condition";
-}
-$weekly_query .= " GROUP BY `DAY COMMITTED` ) ranked_days WHERE rank <= 7 ORDER BY crime_count DESC";
+                AS rank FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "")
+  . " GROUP BY DAYNAME(`dateCommitted`) ) ranked_days WHERE rank <= 7 ORDER BY crime_count DESC";
 $weekly_result = $conn->query($weekly_query);
 $weekly_trend = $weekly_result->fetch_assoc();
 // Extract data for Chart.js
-$days = [];
-$weekly_crimes = [];
+$peakDays = [];
+$weeklyTrends = [];
 foreach ($weekly_result as $row) {
-  $days[] = $row['day'];
-  $weekly_crimes[] = $row['crime_count'];
+  $peakDays[] = $row['day'];
+  $weeklyTrends[] = $row['crime_count'];
 }
 // Convert data to JSON for JavaScript
-$days_json = json_encode($days);
-$weekly_crimes_json = json_encode($weekly_crimes);
+$peakDays_json = json_encode($peakDays);
+$weeklyTrends_json = json_encode($weeklyTrends);
 
 
 
 // MONTHLY TREND
 $monthly_query = "SELECT month, crime_count, rank FROM (
-                  SELECT `MONTH COMMITTED` AS month, 
+                  SELECT MONTHNAME(`dateCommitted`) AS month, 
                   COUNT(*) AS crime_count, 
                   RANK() OVER (ORDER BY COUNT(*) DESC) 
-                  AS rank FROM sanjuan";
-if (!empty($year_condition)) {
-  $monthly_query .= " WHERE $year_condition";
-}
-$monthly_query .= " GROUP BY `MONTH COMMITTED` ) ranked_months 
+                  AS rank FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "")
+  . " GROUP BY MONTHNAME(`dateCommitted`) ) ranked_months 
                     WHERE rank <= 12 ORDER BY crime_count DESC";
 $monthly_result = $conn->query($monthly_query);
 $monthly_trend = $monthly_result->fetch_assoc();
 // Extract data for Chart.js
-$months = [];
-$monthly_crimes = [];
+$peakMonths = [];
+$monthlyTrends = [];
 foreach ($monthly_result as $row) {
-  $months[] = $row['month'];
-  $monthly_crimes[] = $row['crime_count'];
+  $peakMonths[] = $row['month'];
+  $monthlyTrends[] = $row['crime_count'];
 }
 // Convert data to JSON for JavaScript
-$months_json = json_encode($months);
-$monthly_crimes_json = json_encode($monthly_crimes);
+$peakMonths_json = json_encode($peakMonths);
+$monthlyTrends_json = json_encode($monthlyTrends);
+
+
+
+// PREVALENT INCIDENT TYPE
+$incident_query = "SELECT incidentType, COUNT(*) AS crime_count FROM crimemapping"
+  . (!empty($year_condition) ? " WHERE $year_condition" : "")
+  . " GROUP BY incidentType ORDER BY crime_count DESC";
+$incident_result = $conn->query($incident_query);
+// Extract data for Chart.js
+$incidentType = [];
+$incidentCount = [];
+while ($row = $incident_result->fetch_assoc()) {
+  $incidentType[] = $row['incidentType'];
+  $incidentCount[] = $row['crime_count'];
+}
+// Convert to JSON
+$incidentType_json = json_encode($incidentType);
+$incidentCount_json = json_encode($incidentCount);
 
 
 
 // CRIMES AGAINST CLASSIFICATION
-$against_query = "SELECT `CRIMES AGAINST`, COUNT(*) AS crime_count FROM sanjuan WHERE";
-if (!empty($year_condition)) {
-  $against_query .= " $year_condition AND";
-}
-$against_query .= " `CRIMES AGAINST` IN ('crimes against person', 'crimes against property', 'special laws')
-                  GROUP BY `CRIMES AGAINST`
+$against_query = "SELECT `crimeAgainst`, COUNT(*) AS crime_count FROM crimemapping WHERE"
+                . (!empty($year_condition) ? " $year_condition AND" : "")
+                . " `crimeAgainst` IN ('crimes against person', 'crimes against property', 'special laws')
+                  GROUP BY `crimeAgainst`
                   ORDER BY crime_count DESC";
 $against_result = $conn->query($against_query);
-$crime_against = [];
-$against_counts = [];
+$crimeAgainst = [];
+$againstCounts = [];
 while ($row = $against_result->fetch_assoc()) {
-  $crime_against[] = $row['CRIMES AGAINST'];
-  $against_counts[] = $row['crime_count'];
+  $crimeAgainst[] = $row['crimeAgainst'];
+  $againstCounts[] = $row['crime_count'];
 }
 // Convert to JSON for JavaScript
-$crime_against_json = json_encode($crime_against);
-$against_counts_json = json_encode($against_counts);
+$crimeAgainst_json = json_encode($crimeAgainst);
+$againstCounts_json = json_encode($againstCounts);
 
 
 
 // HIGH RISK BRGY
 $highRisk_query = "SELECT Barangay, COUNT(*) AS Count, 
                   DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS Rank
-                  FROM sanjuan WHERE 1
+                  FROM crimemapping WHERE 1
                   " . (!empty($year_condition) ? " AND $year_condition" : "") . "
                   GROUP BY Barangay
                   ORDER BY Count DESC
@@ -191,29 +191,10 @@ $brgy_json = json_encode($brgy_list);
 
 
 
-// PREVALENT OFFENSES
-$offenses_query = "SELECT OFFENSE, COUNT(*) AS crime_count FROM sanjuan";
-if (!empty($year_condition)) {
-  $offenses_query .= " WHERE $year_condition";
-}
-$offenses_query .= " GROUP BY OFFENSE ORDER BY crime_count DESC";
-$offenses_result = $conn->query($offenses_query);
-// Extract data for Chart.js
-$offenses = [];
-$crime_counts = [];
-while ($row = $offenses_result->fetch_assoc()) {
-  $offenses[] = $row['OFFENSE'];
-  $crime_counts[] = $row['crime_count'];
-}
-// Convert to JSON
-$offense_json = json_encode($offenses);
-$offense_counts_json = json_encode($crime_counts);
-
-
 
 // OFFENSES PER BRGY
 // Fetch all barangays
-$barangays_query = "SELECT DISTINCT BARANGAY FROM sanjuan";
+$barangays_query = "SELECT DISTINCT BARANGAY FROM crimemapping";
 $barangays_result = $conn->query($barangays_query);
 $barangays = [];
 while ($row = $barangays_result->fetch_assoc()) {
@@ -222,7 +203,7 @@ while ($row = $barangays_result->fetch_assoc()) {
 
 // Fetch all offense data grouped by barangay
 $offense_query = "SELECT BARANGAY, OFFENSE, COUNT(*) AS crime_count 
-                  FROM sanjuan WHERE 1
+                  FROM crimemapping WHERE 1
                   " . (!empty($year_condition) ? " AND $year_condition" : "") . "
                   GROUP BY BARANGAY, OFFENSE ORDER BY BARANGAY, crime_count DESC";
 $offense_result = $conn->query($offense_query);
@@ -538,9 +519,9 @@ $conn->close();
     <div class="row">
       <!-- Card 1 / PEAK TIME -->
       <div class="col-lg-4 col-md-6">
-        <div class="card" style="height: 300px;"> <!-- Adjust height for square shape -->
+        <div class="card" style="height: 300px;">
           <div class="card-body">
-            <p class="card-title">Peak Time of the Day</p>
+            <p class="card-title">Peak Hours of the Day</p>
             <canvas id="dailyTrend"></canvas>
           </div>
         </div>
@@ -569,18 +550,18 @@ $conn->close();
   <!-- 4TH ROW -->
   <div class="container mt-4">
     <div class="row">
-      <!-- PREVALENT OFFENSES -->
+      <!-- PREVALENT INCIDENT TYPES -->
       <div class="col-lg-7">
-        <div class="card" style="height: 300px;">
+        <div class="card h-100">
           <div class="card-body">
             <p class="card-title">Prevalent Offenses in San Juan</p>
-            <canvas id="offensesChart"></canvas>
+            <canvas id="incidentChart"></canvas>
           </div>
         </div>
       </div>
       <!-- CRIMES AGAINST -->
       <div class="col-lg-5">
-        <div class="card" style="height: 300px;">
+        <div class="card h-100">
           <div class="card-body">
             <p class="card-title">Crime Classification</p>
             <canvas id="crimeAgainst"></canvas>
@@ -639,8 +620,209 @@ $conn->close();
       minute: "2-digit",
       hour12: true, // For AM/PM format
     };
-    document.getElementById("datetime").innerHTML =
-      dt.toLocaleString("en-US", options) + " PHT";
+    document.getElementById("datetime").innerHTML = dt.toLocaleString("en-US", options) + " PHT";
+
+
+    document.addEventListener("DOMContentLoaded", function () {
+
+      // DAILY TREND
+      const peakTimes = <?php echo $peakTimes_json; ?>;
+      const dailyCounts = <?php echo $dailyTrends_json; ?>;
+
+      const ctxDaily = document.getElementById('dailyTrend').getContext('2d');
+      new Chart(ctxDaily, {
+        type: 'line',
+        data: {
+          labels: peakTimes,
+          datasets: [{
+            label: 'Crime Trends per Day',
+            data: dailyCounts,
+            borderColor: '#00CFFF',
+            backgroundColor: 'rgba(0, 207, 255, 0.3)',
+            borderWidth: 3,
+            pointBackgroundColor: '#FFB400',
+            pointRadius: 5,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+
+
+      // WEEKLY TREND
+      const peakDays = <?php echo $peakDays_json; ?>;
+      const weeklyCounts = <?php echo $weeklyTrends_json; ?>;
+
+      const ctxWeekly = document.getElementById('weeklyTrend').getContext('2d');
+      new Chart(ctxWeekly, {
+        type: 'line',
+        data: {
+          labels: peakDays,
+          datasets: [{
+            label: 'Crime Trends per Week',
+            data: weeklyCounts,
+            borderColor: '#00CFFF',
+            backgroundColor: 'rgba(0, 207, 255, 0.3)',
+            borderWidth: 3,
+            pointBackgroundColor: '#FFB400',
+            pointRadius: 5,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+
+
+      // MONTHLY TREND
+      const peakMonths = <?php echo $peakMonths_json; ?>;
+      const monthlyCounts = <?php echo $monthlyTrends_json; ?>;
+
+      const ctxMonthly = document.getElementById('monthlyTrend').getContext('2d');
+      new Chart(ctxMonthly, {
+        type: 'line',
+        data: {
+          labels: peakMonths,
+          datasets: [{
+            label: 'Crime Trends per Month',
+            data: monthlyCounts,
+            borderColor: '#00CFFF',
+            backgroundColor: 'rgba(0, 207, 255, 0.3)',
+            borderWidth: 3,
+            pointBackgroundColor: '#FFB400',
+            pointRadius: 5,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+
+
+      // PREVALENT OFFENSES
+      const incidentType = <?php echo $incidentType_json; ?>;
+      const incidentCount = <?php echo $incidentCount_json; ?>;
+
+      const ctxIncident = document.getElementById('incidentChart').getContext('2d');
+      new Chart(ctxIncident, {
+        type: 'bar',
+        data: {
+          labels: incidentType,
+          datasets: [{
+            label: 'Number of Crimes',
+            data: incidentCount,
+            backgroundColor: 'rgba(0, 123, 255, 0.6)',
+            borderColor: 'rgba(0, 123, 255, 1)',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          indexAxis: 'y',
+          scales: {
+            x: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Number of Crimes'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Offense Type'
+              }
+            }
+          }
+        }
+      });
+
+
+
+      // CRIME AGAINST PIE CHART
+      const crimeAgainst = <?php echo $crimeAgainst_json; ?>;
+      const againstCounts = <?php echo $againstCounts_json; ?>;
+
+      const ctxAgainst = document.getElementById('crimeAgainst').getContext('2d');
+      new Chart(ctxAgainst, {
+        type: 'doughnut',
+        data: {
+          labels: crimeAgainst,
+          datasets: [{
+            label: 'Number of Crimes',
+            data: againstCounts,
+            backgroundColor: [
+              'rgba(255, 99, 132, 0.6)',
+              'rgba(54, 162, 235, 0.6)',
+              'rgba(255, 206, 86, 0.6)'
+            ],
+            borderColor: [
+              'rgba(255, 99, 132, 1)',
+              'rgba(54, 162, 235, 1)',
+              'rgba(255, 206, 86, 1)'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          cutout: '30%',
+          aspectRatio: 1.5,
+          plugins: {
+            legend: {
+              position: 'top'
+            },
+            tooltip: {
+              callbacks: {
+                label: function (tooltipItem) {
+                  return crimeAgainst[tooltipItem.dataIndex] + ': ' + againstCounts[tooltipItem.dataIndex];
+                }
+              }
+            },
+            datalabels: { 
+              color: '#fff', 
+              anchor: 'center', 
+              align: 'center',
+              font: {
+                weight: 'bold',
+                size: 14
+              },
+              formatter: (value) => value 
+            }
+          }
+
+        },
+        plugins: [ChartDataLabels]
+      });
+    });
+
+
+    
+    // HIGH RISK BRGY
+    const brgyData = <?php echo $brgy_json; ?>;
+    const brgyList = document.getElementById('brgyList');
+
+    brgyData.forEach(item => {
+      let listItem = document.createElement("li");
+      listItem.textContent = `${item.rank}. ${item.barangay}`;
+      brgyList.appendChild(listItem);
+    });
 
     const offenseData = <?= json_encode($offense_data) ?>;
     let chartInstance;
@@ -687,206 +869,6 @@ $conn->close();
       if (selectedBarangay) {
         updateChart(selectedBarangay);
       }
-    });
-
-
-    // HIGH RISK BRGY
-    const brgyData = <?php echo $brgy_json; ?>;
-    const brgyList = document.getElementById('brgyList');
-
-    brgyData.forEach(item => {
-      let listItem = document.createElement("li");
-      listItem.textContent = `${item.rank}. ${item.barangay}`;
-      brgyList.appendChild(listItem);
-    });
-
-
-    document.addEventListener("DOMContentLoaded", function () {
-
-      // DAILY TREND
-      const time = <?php echo $time_json; ?>;
-      const dailyCounts = <?php echo $daily_crimes_json; ?>;
-
-      const ctxDaily = document.getElementById('dailyTrend').getContext('2d');
-      new Chart(ctxDaily, {
-        type: 'line',
-        data: {
-          labels: time,
-          datasets: [{
-            label: 'Crime Trends per Day',
-            data: dailyCounts,
-            borderColor: '#00CFFF',
-            backgroundColor: 'rgba(0, 207, 255, 0.3)',
-            borderWidth: 3,
-            pointBackgroundColor: '#FFB400',
-            pointRadius: 5,
-            fill: true
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-
-
-
-      // WEEKLY TREND
-      const days = <?php echo $days_json; ?>;
-      const weeklyCounts = <?php echo $weekly_crimes_json; ?>;
-
-      const ctxWeekly = document.getElementById('weeklyTrend').getContext('2d');
-      new Chart(ctxWeekly, {
-        type: 'line',
-        data: {
-          labels: days,
-          datasets: [{
-            label: 'Crime Trends per Week',
-            data: weeklyCounts,
-            borderColor: '#00CFFF',
-            backgroundColor: 'rgba(0, 207, 255, 0.3)',
-            borderWidth: 3,
-            pointBackgroundColor: '#FFB400',
-            pointRadius: 5,
-            fill: true
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-
-
-
-      // MONTHLY TREND
-      const months = <?php echo $months_json; ?>;
-      const monthlyCounts = <?php echo $monthly_crimes_json; ?>;
-
-      const ctxMonthly = document.getElementById('monthlyTrend').getContext('2d');
-      new Chart(ctxMonthly, {
-        type: 'line',
-        data: {
-          labels: months,
-          datasets: [{
-            label: 'Crime Trends per Month',
-            data: monthlyCounts,
-            borderColor: '#00CFFF',
-            backgroundColor: 'rgba(0, 207, 255, 0.3)',
-            borderWidth: 3,
-            pointBackgroundColor: '#FFB400',
-            pointRadius: 5,
-            fill: true
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-
-
-
-      // CRIME AGAINST PIE CHART
-      const crimeAgainst = <?php echo $crime_against_json; ?>;
-      const againstCounts = <?php echo $against_counts_json; ?>;
-
-      const ctxAgainst = document.getElementById('crimeAgainst').getContext('2d');
-      new Chart(ctxAgainst, {
-        type: 'pie',
-        data: {
-          labels: crimeAgainst,
-          datasets: [{
-            label: 'Number of Crimes',
-            data: againstCounts,
-            backgroundColor: [
-              'rgba(255, 99, 132, 0.6)',
-              'rgba(54, 162, 235, 0.6)',
-              'rgba(255, 206, 86, 0.6)'
-            ],
-            borderColor: [
-              'rgba(255, 99, 132, 1)',
-              'rgba(54, 162, 235, 1)',
-              'rgba(255, 206, 86, 1)'
-            ],
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: {
-              position: 'top'
-            },
-            tooltip: {
-              callbacks: {
-                label: function (tooltipItem) {
-                  return crimeAgainst[tooltipItem.dataIndex] + ': ' + againstCounts[tooltipItem.dataIndex];
-                }
-              }
-            },
-            datalabels: { // Enable datalabels plugin
-              color: '#fff', // Text color
-              anchor: 'center', // Position inside the pie slice
-              align: 'center',
-              font: {
-                weight: 'bold',
-                size: 14
-              },
-              formatter: (value) => value // Show the count inside the chart
-            }
-          }
-
-        },
-        plugins: [ChartDataLabels] // Register the datalabels plugin
-      });
-
-
-
-      // PREVALENT OFFENSES
-      const offenses = <?php echo $offense_json; ?>;
-      const offenseCounts = <?php echo $offense_counts_json; ?>;
-
-      const ctxOffenses = document.getElementById('offensesChart').getContext('2d');
-      new Chart(ctxOffenses, {
-        type: 'bar',
-        data: {
-          labels: offenses,
-          datasets: [{
-            label: 'Number of Crimes',
-            data: offenseCounts,
-            backgroundColor: 'rgba(0, 123, 255, 0.6)',
-            borderColor: 'rgba(0, 123, 255, 1)',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          indexAxis: 'y',
-          scales: {
-            x: {
-              beginAtZero: true,
-              title: {
-                display: true,
-                text: 'Number of Crimes'
-              }
-            },
-            y: {
-              title: {
-                display: true,
-                text: 'Offense Type'
-              }
-            }
-          }
-        }
-      });
-
     });
 
     function printReport() {
