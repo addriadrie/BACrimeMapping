@@ -1,5 +1,5 @@
 <?php
-session_start(); 
+session_start();
 include('config.php');
 
 // Get the selected year
@@ -231,7 +231,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["uploadFile"])) {
   $datasetID = mysqli_insert_id($conn);
 
   // Insert into sampletable 
-  for ($i = 1; $i < count($getContent); $i++) { 
+  for ($i = 1; $i < count($getContent); $i++) {
     $expRow = explode(",", $getContent[$i]);
 
     $barangay = $expRow[0];
@@ -268,14 +268,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["uploadFile"])) {
   exit();
 }
 
-// Show success alert after redirect
 if (isset($_GET['success']) && $_GET['success'] == 1) {
   echo "<script>alert('CSV file has been successfully uploaded and data inserted into the database.');</script>";
-  unset($_SESSION['uploaded']); // Reset session flag
+  unset($_SESSION['uploaded']);
 }
-
-
-
 
 $conn->close();
 ?>
@@ -596,12 +592,13 @@ $conn->close();
         </select>
       </form>
 
-      <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']) ?>" enctype="multipart/form-data">
-        <input type="file" name="csvfile">
-        <button class="btn btn-primary" name="uploadFile">Upload CSV</button>
+      <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data" id="uploadFile">
+        <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;" onchange="document.getElementById('uploadFile').submit();">
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('csvfile').click();">
+          Upload CSV
+        </button>
+        <input type="hidden" name="uploadFile" value="1">
       </form>
-
-
       <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
     </div>
 
