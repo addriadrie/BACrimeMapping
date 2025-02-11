@@ -571,7 +571,7 @@ $conn->close();
       <li><a href="mapview.php">Map View</a></li>
       <li><a class="active" href="analytics.php">Analytics</a></li>
       <li><a href="forecast.php">Forecasts</a></li>
-      <li><a href="activity-log.html">Activity Logs</a></li>
+      <li><a href="activity-log.php">Activity Logs</a></li>
     </ul>
     <div class="date-display" id="datetime"></div>
   </nav>
