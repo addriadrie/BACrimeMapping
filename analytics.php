@@ -270,7 +270,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["uploadFile"])) {
 
 if (isset($_GET['success']) && $_GET['success'] == 1) {
   echo "<script>alert('CSV file has been successfully uploaded and data inserted into the database.');</script>";
-  unset($_SESSION['uploaded']);
+  unset($_SESSION['uploaded']); // Reset session flag
 }
 
 $conn->close();
@@ -570,7 +570,7 @@ $conn->close();
       <li><a href="dashboard.php">Overview</a></li>
       <li><a href="mapview.php">Map View</a></li>
       <li><a class="active" href="analytics.php">Analytics</a></li>
-      <li><a href="forecast.html">Forecasts</a></li>
+      <li><a href="forecast.php">Forecasts</a></li>
       <li><a href="activity-log.html">Activity Logs</a></li>
     </ul>
     <div class="date-display" id="datetime"></div>
@@ -592,14 +592,16 @@ $conn->close();
         </select>
       </form>
 
-      <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data" id="uploadFile">
-        <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;" onchange="document.getElementById('uploadFile').submit();">
-        <button type="button" class="btn btn-primary" onclick="document.getElementById('csvfile').click();">
-          Upload CSV
-        </button>
-        <input type="hidden" name="uploadFile" value="1">
-      </form>
-      <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
+      <div class="d-flex gap-2 ms-auto">
+        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data" id="uploadForm">
+          <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;" onchange="document.getElementById('uploadForm').submit();">
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('csvfile').click();">
+            Upload CSV
+          </button>
+          <input type="hidden" name="uploadFile" value="1">
+        </form>
+        <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
+      </div>
     </div>
 
     <div class="row">
