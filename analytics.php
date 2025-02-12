@@ -138,6 +138,8 @@ while ($row = $incident_result->fetch_assoc()) {
   $incidentType[] = $row['incidentType'];
   $incidentCount[] = $row['crime_count'];
 }
+$incidentType = array_slice($incidentType, 0, 12);
+$incidentCount = array_slice($incidentCount, 0, 12);
 $incidentType_json = json_encode($incidentType);
 $incidentCount_json = json_encode($incidentCount);
 
@@ -183,10 +185,15 @@ while ($row = $barangays_result->fetch_assoc()) {
   $barangays[] = $row['BARANGAY'];
 }
 
-$offense_query = "SELECT BARANGAY, OFFENSE, COUNT(*) AS crime_count 
-                  FROM crimemapping WHERE 1
-                  " . (!empty($year_condition) ? " AND $year_condition" : "") . "
-                  GROUP BY BARANGAY, OFFENSE ORDER BY BARANGAY, crime_count DESC";
+$offense_query = "SELECT BARANGAY, incidentType, crime_count FROM (
+                  SELECT BARANGAY, incidentType, COUNT(*) AS crime_count, 
+                        ROW_NUMBER() OVER (PARTITION BY BARANGAY ORDER BY COUNT(*) DESC) AS rank
+                  FROM crimemapping
+                  " . (!empty($year_condition) ? " WHERE $year_condition" : "") . "
+                  GROUP BY BARANGAY, incidentType
+                ) ranked
+                WHERE rank <= 13
+                ORDER BY BARANGAY, crime_count DESC";
 $offense_result = $conn->query($offense_query);
 
 $offense_data = [];
@@ -196,7 +203,7 @@ while ($row = $offense_result->fetch_assoc()) {
     $offense_data[$barangay] = [];
   }
   $offense_data[$barangay][] = [
-    "offense" => $row['OFFENSE'],
+    "offense" => $row['incidentType'],
     "crime_count" => $row['crime_count']
   ];
 }
@@ -218,7 +225,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["uploadFile"])) {
 
   // Insert into managedataset
   $accountID = 1;
-  $datasetName = date('Y-m-d_H:i:s');
+  $datasetName = "sanjuan_" . date('Y-m-d_H:i:s');
   $uploadDate = date('Y-m-d');
   $uploadTime = date('H:i:s');
   $newDataset = mysqli_query($conn, "INSERT INTO managedataset (accountID, datasetName, uploadDate, uploadTime) VALUES ('$accountID', '$datasetName', '$uploadDate', '$uploadTime')");
@@ -288,6 +295,12 @@ $conn->close();
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- Bootstrap JavaScript Bundle with Popper -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Poppins&family=Inter&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200..700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" />
@@ -550,6 +563,69 @@ $conn->close();
         break-inside: avoid;
       }
     }
+
+    .year-toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .pill-toggle {
+      background: var(--card-bg);
+      padding: 0.25rem;
+      border-radius: 100px;
+      display: inline-block;
+    }
+
+    .pill-toggle-group {
+      display: flex;
+      position: relative;
+      gap: 0.25rem;
+    }
+
+    .pill-toggle-group input[type="radio"] {
+      display: none;
+    }
+
+    .pill-toggle-option {
+      padding: 0.5rem 1.25rem;
+      font-size: 0.875rem;
+      color: var(--secondary-text);
+      cursor: pointer;
+      border-radius: 100px;
+      transition: all 0.3s ease;
+      position: relative;
+      z-index: 1;
+      user-select: none;
+    }
+
+    .pill-toggle-option.year-value {
+      color: var(--accent);
+    }
+
+    .pill-toggle-option.active {
+      color: var(--background) !important;
+      background: var(--primary-text);
+    }
+
+    /* Responsive styles */
+    @media (max-width: 768px) {
+      .pill-toggle {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .pill-toggle-group {
+        width: max-content;
+      }
+
+      .pill-toggle-option {
+        padding: 0.375rem 1rem;
+        font-size: 0.813rem;
+      }
+    }
   </style>
 </head>
 
@@ -568,9 +644,9 @@ $conn->close();
   <nav class="nav">
     <ul class="nav-links">
       <li><a href="dashboard.php">Overview</a></li>
-      <li><a href="mapview.php">Map View</a></li>
+      <li><a href="map.php">Map View</a></li>
       <li><a class="active" href="analytics.php">Analytics</a></li>
-      <li><a href="forecast.php">Forecasts</a></li>
+      <li><a href="forecast.html">Forecasts</a></li>
       <li><a href="activity-log.php">Activity Logs</a></li>
     </ul>
     <div class="date-display" id="datetime"></div>
@@ -579,28 +655,40 @@ $conn->close();
 
   <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <form method="GET" class="d-flex align-items-center gap-2">
-        <label for="year" style="color: var(--secondary-text)">Select Year:</label>
-        <select name="year" id="year" onchange="this.form.submit()">
-          <option value="all" <?= ($year == 'all') ? 'selected' : '' ?>>All Time</option>
-          <?php
-          foreach ($years as $yr) {
-            $selected = ($year == $yr) ? 'selected' : '';
-            echo "<option value='$yr' $selected>$yr</option>";
-          }
-          ?>
-        </select>
-      </form>
+      <div class="year-toggle-container">
+        <div class="pill-toggle">
+          <form method="GET" id="yearForm" class="pill-toggle-group">
+            <input type="radio" id="all" name="year" value="all" <?= ($year == 'all') ? 'checked' : '' ?>>
+            <label for="all" class="pill-toggle-option" style="color: var(--accent)" onclick="submitForm('all')">All
+              Time</label>
 
-      <div class="d-flex gap-2 ms-auto">
-        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data" id="uploadForm">
-          <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;" onchange="document.getElementById('uploadForm').submit();">
-          <button type="button" class="btn btn-primary" onclick="document.getElementById('csvfile').click();">
-            Upload CSV
+            <?php foreach ($years as $yr): ?>
+              <input type="radio" id="year_<?= $yr ?>" name="year" value="<?= $yr ?>" <?= ($year == $yr) ? 'checked' : '' ?>>
+              <label for="year_<?= $yr ?>" class="pill-toggle-option year-value"
+                onclick="submitForm('<?= $yr ?>')"><?= $yr ?></label>
+            <?php endforeach; ?>
+          </form>
+        </div>
+      </div>
+      <div class="d-flex gap-4 ms-auto align-items-center">
+        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data"
+          id="uploadForm">
+          <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;"
+            onchange="document.getElementById('uploadForm').submit();">
+          <a href="#" class="text-decoration-none d-flex align-items-center gap-2" style="color: var(--secondary-text);"
+            onclick="document.getElementById('csvfile').click();">
+            <i class="bi bi-upload"></i>
+            <span style="text-decoration: underline;">Upload CSV</span>
+          </a>
+
           </button>
           <input type="hidden" name="uploadFile" value="1">
         </form>
-        <button class="btn btn-primary" onclick="printReport()">Generate Report</button>
+        <a href="#" class="text-decoration-none d-flex align-items-center gap-2" style="color: var(--secondary-text);"
+          onclick="printReport()">
+          <i class="bi bi-file-earmark-text"></i>
+          <span style="text-decoration: underline;">Generate Report</span>
+        </a>
       </div>
     </div>
 
@@ -777,6 +865,46 @@ $conn->close();
     }
     updateDateTime();
     setInterval(updateDateTime, 60000);
+
+    function submitForm(selectedYear) {
+      // Remove active class from all options
+      document.querySelectorAll('.pill-toggle-option').forEach(option => {
+        option.classList.remove('active');
+      });
+
+      // Add active class to selected option
+      const selectedOption = selectedYear === 'all'
+        ? document.querySelector('label[for="all"]')
+        : document.querySelector(`label[for="year_${selectedYear}"]`);
+
+      if (selectedOption) {
+        selectedOption.classList.add('active');
+      }
+
+      // Set the radio input value
+      const radioInput = selectedYear === 'all'
+        ? document.getElementById('all')
+        : document.getElementById(`year_${selectedYear}`);
+
+      if (radioInput) {
+        radioInput.checked = true;
+      }
+
+      // Submit the form
+      document.getElementById('yearForm').submit();
+    }
+
+    // Set initial active state based on PHP variable
+    document.addEventListener('DOMContentLoaded', function () {
+      const currentYear = '<?= $year ?>';
+      const activeOption = currentYear === 'all'
+        ? document.querySelector('label[for="all"]')
+        : document.querySelector(`label[for="year_${currentYear}"]`);
+
+      if (activeOption) {
+        activeOption.classList.add('active');
+      }
+    });
 
     // Chart Configuration
     Chart.defaults.color = '#94a3b8';
@@ -1004,6 +1132,33 @@ $conn->close();
     function printReport() {
       window.print();
     }
+
+    window.logout = function () {
+      // Clear all local storage
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Send a request to destroy the server-side session
+      fetch('log-out.php', {
+        method: 'POST',
+        credentials: 'same-origin'
+      })
+        .then(() => {
+          // Redirect to login page after session destruction
+          window.location.href = "log-in.php";
+        })
+        .catch(error => {
+          console.error('Logout error:', error);
+          // Fallback redirect
+          window.location.href = "log-in.php";
+        });
+    };
+    document.querySelectorAll('.pill-toggle-option').forEach(option => {
+      option.addEventListener('click', function () {
+        this.closest('form').submit();
+      });
+    });
+
   </script>
 </body>
 
