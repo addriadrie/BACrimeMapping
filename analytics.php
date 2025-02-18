@@ -612,7 +612,16 @@ $conn->close();
     }
 
     #brgyList li {
-      padding: 0.25rem 0;
+      padding: 12px;
+      margin: 8px 0;
+      background: rgba(148, 163, 184, 0.05);
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    #brgyList li:hover {
+      background: rgba(148, 163, 184, 0.1);
+      transform: translateX(4px);
     }
 
     #crimeAgainst {
@@ -945,7 +954,8 @@ $conn->close();
               foreach ($barangays as $barangay):
                 ?>
                 <option value="<?= htmlspecialchars($barangay) ?>">
-                  <?= htmlspecialchars($barangay) ?></option>
+                  <?= htmlspecialchars($barangay) ?>
+                </option>
               <?php endforeach; ?>
             </select>
             <div class="chart-container">
