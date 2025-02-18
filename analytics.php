@@ -590,26 +590,13 @@ $conn->close();
       color: var(--primary-text);
       padding: 5px;
       padding-left: 1rem;
-      border: 1px solid #ccc;
+      border: 1px solid #38bdf8;
       border-radius: 5px;
       font-size: 0.85rem;
       transition: background-color 0.3s ease;
       -webkit-appearance: none;
       -moz-appearance: none;
       appearance: none;
-    }
-
-    #barangayDropdown option {
-      background-color: var(--card-bg);
-      color: var(--primary-text);
-      cursor: pointer;
-    }
-
-    /* Focus state */
-    #barangayDropdown:focus {
-      background-color: rgba(56, 189, 248, 0.15);
-      border-color: var(--accent);
-      outline: none;
     }
 
     #brgyList {
@@ -957,7 +944,8 @@ $conn->close();
               sort($barangays);
               foreach ($barangays as $barangay):
                 ?>
-                <option value="<?= htmlspecialchars($barangay) ?>"><?= htmlspecialchars($barangay) ?></option>
+                <option value="<?= htmlspecialchars($barangay) ?>">
+                  <?= htmlspecialchars($barangay) ?></option>
               <?php endforeach; ?>
             </select>
             <div class="chart-container">
