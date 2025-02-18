@@ -128,21 +128,19 @@ foreach ($monthly_result as $row) {
 $peakMonths_json = json_encode($peakMonths);
 $monthlyTrends_json = json_encode($monthlyTrends);
 
-// PREVALENT INCIDENT TYPE
-$incident_query = "SELECT incidentType, COUNT(*) AS crime_count FROM crimemapping"
+// PREVALENT INCIDENT TYPE IN SAN JUAN
+$sanjuan_query = "SELECT incidentType, COUNT(*) AS crime_count FROM crimemapping"
   . (!empty($year_condition) ? " WHERE $year_condition" : "")
   . " GROUP BY incidentType ORDER BY crime_count DESC";
-$incident_result = $conn->query($incident_query);
-$incidentType = [];
-$incidentCount = [];
-while ($row = $incident_result->fetch_assoc()) {
-  $incidentType[] = $row['incidentType'];
-  $incidentCount[] = $row['crime_count'];
+$sanjuan_result = $conn->query($sanjuan_query);
+$sanjuanType = [];
+$sanjuanCount = [];
+while ($row = $sanjuan_result->fetch_assoc()) {
+  $sanjuanType[] = $row['incidentType'];
+  $sanjuanCount[] = $row['crime_count'];
 }
-$incidentType = array_slice($incidentType, 0);
-$incidentCount = array_slice($incidentCount, 0);
-$incidentType_json = json_encode($incidentType);
-$incidentCount_json = json_encode($incidentCount);
+$sanjuanType_json = json_encode($sanjuanType);
+$sanjuanCount_json = json_encode($sanjuanCount);
 
 // CRIME AGAINST CLASSIFICATION
 $against_query = "SELECT CASE 
@@ -177,8 +175,7 @@ $highRisk_query = "SELECT Barangay, COUNT(*) AS Count,
                   FROM crimemapping WHERE 1
                   " . (!empty($year_condition) ? " AND $year_condition" : "") . "
                   GROUP BY Barangay
-                  ORDER BY Count DESC
-                  LIMIT 10;";
+                  ORDER BY Count DESC";
 $highRisk_result = $conn->query($highRisk_query);
 $brgy_list = [];
 while ($row = $highRisk_result->fetch_assoc()) {
@@ -189,32 +186,30 @@ while ($row = $highRisk_result->fetch_assoc()) {
 }
 $brgy_json = json_encode($brgy_list);
 
-// OFFENSES PER BRGY
-$barangays_query = "SELECT DISTINCT BARANGAY FROM crimemapping";
-$barangays_result = $conn->query($barangays_query);
+// PREVALENT INCIDENT TYPE PER BARANGAY
+$barangay_query = "SELECT DISTINCT BARANGAY FROM crimemapping";
+$barangay_result = $conn->query($barangay_query);
 $barangays = [];
-while ($row = $barangays_result->fetch_assoc()) {
+while ($row = $barangay_result->fetch_assoc()) {
   $barangays[] = $row['BARANGAY'];
 }
-
-$offense_query = "SELECT BARANGAY, incidentType, crime_count FROM (
+$brgyIncident_query = "SELECT BARANGAY, incidentType, crime_count FROM (
                   SELECT BARANGAY, incidentType, COUNT(*) AS crime_count, 
                         ROW_NUMBER() OVER (PARTITION BY BARANGAY ORDER BY COUNT(*) DESC) AS rank
                   FROM crimemapping
                   " . (!empty($year_condition) ? " WHERE $year_condition" : "") . "
                   GROUP BY BARANGAY, incidentType
                 ) ranked
-                WHERE rank <= 13
                 ORDER BY BARANGAY, crime_count DESC";
-$offense_result = $conn->query($offense_query);
+$brgyIncident_result = $conn->query($brgyIncident_query);
 
-$offense_data = [];
-while ($row = $offense_result->fetch_assoc()) {
+$brgyIncident_data = [];
+while ($row = $brgyIncident_result->fetch_assoc()) {
   $barangay = $row['BARANGAY'];
-  if (!isset($offense_data[$barangay])) {
-    $offense_data[$barangay] = [];
+  if (!isset($brgyIncident_data[$barangay])) {
+    $brgyIncident_data[$barangay] = [];
   }
-  $offense_data[$barangay][] = [
+  $brgyIncident_data[$barangay][] = [
     "offense" => $row['incidentType'],
     "crime_count" => $row['crime_count']
   ];
@@ -462,157 +457,6 @@ $conn->close();
       font-weight: 500;
     }
 
-    .card {
-      background-color: var(--card-bg);
-      border-radius: 0.5rem;
-      margin-bottom: 1rem;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      transition: all 0.3s ease;
-    }
-
-    .card-body {
-      padding: 1.25rem;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      border: 1px solid transparent;
-      transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
-    }
-
-    .card-title {
-      color: var(--secondary-text);
-      font-size: 0.875rem;
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-
-    .card-text {
-      color: var(--accent);
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin: 0;
-    }
-
-    .card:hover {
-      transform: translateY(-4px);
-      border: 2px solid #38bdf8;
-      box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.2);
-    }
-
-    select {
-      background-color: #ffffff;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 0.375rem;
-      color: #000000;
-      font-size: 0.875rem;
-      padding: 0.5rem;
-    }
-
-    select option {
-      background-color: #ffffff;
-      color: #000000;
-    }
-
-    .btn-primary {
-      background-color: var(--accent);
-      border: none;
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
-      padding: 0.5rem 1rem;
-    }
-
-    .btn-primary:hover {
-      background-color: #0ea5e9;
-    }
-
-    .chart-container {
-      position: relative;
-      height: 300px !important;
-      width: 100%;
-      margin: 0 auto;
-      padding: 1rem;
-      aspect-ratio: 16/9;
-    }
-
-    canvas {
-      max-width: 100%;
-    }
-
-    #brgyList {
-      color: var(--primary-text);
-      font-size: 0.875rem;
-      list-style: none;
-      padding: 1rem;
-      margin: 0;
-      height: 300px;
-      overflow-y: auto;
-    }
-
-    #brgyList li {
-      padding: 0.25rem 0;
-    }
-
-    .logout-btn {
-      padding: 8px 16px;
-      background-color: transparent;
-      color: var(--text-primary);
-      border: transparent;
-      cursor: pointer;
-    }
-
-    .logout-btn:hover {
-      background-color: var(--border-color);
-    }
-
-    #crimeAgainst {
-      height: 300px !important;
-      width: 100% !important;
-      margin: 0 auto;
-    }
-
-    .row {
-      margin-bottom: 1.5rem;
-      display: flex;
-      align-items: stretch;
-    }
-
-    .col-lg-5,
-    .col-lg-7 {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .container {
-      padding-top: 2rem;
-      padding-bottom: 2rem;
-    }
-
-    .card-title {
-      margin-bottom: 1.5rem;
-      font-size: 1rem;
-      font-weight: bold;
-      color: var(--secondary-text);
-    }
-
-    @media print {
-
-      .navbar,
-      select,
-      .btn-primary {
-        display: none !important;
-      }
-
-      body {
-        background-color: white !important;
-      }
-
-      .card {
-        break-inside: avoid;
-      }
-    }
-
     .year-toggle-container {
       display: flex;
       align-items: center;
@@ -662,6 +506,178 @@ $conn->close();
       background-color: rgba(56, 189, 248, 0.1);
       color: var(--accent);
       cursor: pointer;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s ease;
+    }
+
+    .card-title {
+      color: var(--secondary-text);
+      font-weight: bold;
+      margin-bottom: 1.5rem;
+      font-size: 1rem;
+    }
+
+    .card-body {
+      padding: 1.25rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid transparent;
+      transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card-text {
+      color: var(--accent);
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border: 2px solid #38bdf8;
+      box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    select {
+      background-color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.375rem;
+      color: #000000;
+      font-size: 0.875rem;
+      padding: 0.5rem;
+    }
+
+    select option {
+      background-color: #ffffff;
+      color: #000000;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px !important;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1rem;
+      aspect-ratio: 16/9;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #1e293b #94a3b8;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+
+    #sanjuanContainer {
+      height: 1000px;
+    }
+
+    #brgyIncidentContainer {
+      height: 400px;
+    }
+
+    #barangayDropdown {
+      background-color: rgba(56, 189, 248, 0.1);
+      color: var(--primary-text);
+      padding: 5px;
+      padding-left: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      transition: background-color 0.3s ease;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+    }
+
+    #barangayDropdown option {
+      background-color: var(--card-bg);
+      color: var(--primary-text);
+      cursor: pointer;
+    }
+
+    /* Focus state */
+    #barangayDropdown:focus {
+      background-color: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    #brgyList {
+      color: var(--primary-text);
+      font-size: 0.875rem;
+      list-style: none;
+      padding: 1rem;
+      margin: 0;
+      height: 300px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #1e293b #94a3b8;
+    }
+
+    #brgyList li {
+      padding: 0.25rem 0;
+    }
+
+    #crimeAgainst {
+      height: 300px !important;
+      width: 100% !important;
+      margin: 0 auto;
+    }
+
+    .row {
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: stretch;
+    }
+
+    .col-lg-5,
+    .col-lg-7 {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      padding-top: 2rem;
+      padding-bottom: 2rem;
+    }
+
+    .logout-btn {
+      padding: 8px 16px;
+      background-color: transparent;
+      color: var(--text-primary);
+      border: transparent;
+      cursor: pointer;
+    }
+
+    .logout-btn:hover {
+      background-color: var(--border-color);
+    }
+
+    @media print {
+
+      .navbar,
+      select,
+      .btn-primary {
+        display: none !important;
+      }
+
+      body {
+        background-color: white !important;
+      }
+
+      .card {
+        break-inside: avoid;
+      }
     }
 
     /* Responsive styles */
@@ -905,7 +921,9 @@ $conn->close();
           <div class="card-body">
             <h6 class="card-title">Prevalent Offenses in San Juan</h6>
             <div class="chart-container">
-              <canvas id="incidentChart"></canvas>
+              <div id="sanjuanContainer">
+                <canvas id="sanjuanChart"></canvas>
+              </div>
             </div>
           </div>
         </div>
@@ -935,12 +953,17 @@ $conn->close();
             <h6 class="card-title">Number of Offenses per Barangay</h6>
             <select id="barangayDropdown" class="mb-3">
               <option value="">-- Select Barangay --</option>
-              <?php foreach ($barangays as $barangay): ?>
+              <?php
+              sort($barangays);
+              foreach ($barangays as $barangay):
+                ?>
                 <option value="<?= htmlspecialchars($barangay) ?>"><?= htmlspecialchars($barangay) ?></option>
               <?php endforeach; ?>
             </select>
             <div class="chart-container">
-              <canvas id="offensePerBrgyChart"></canvas>
+              <div id="brgyIncidentContainer">
+                <canvas id="brgyIncidentChart"></canvas>
+              </div>
             </div>
           </div>
         </div>
@@ -1090,16 +1113,16 @@ $conn->close();
       options: chartOptions
     });
 
-    // Incident Chart
-    new Chart(document.getElementById('incidentChart').getContext('2d'), {
+    // Prevalent Incidents in San Juan
+    new Chart(document.getElementById('sanjuanChart').getContext('2d'), {
       type: 'bar',
       data: {
-        labels: <?= $incidentType_json ?>,
+        labels: <?= $sanjuanType_json ?>,
         datasets: [{
           label: 'Number of Crimes',
-          data: <?= $incidentCount_json ?>,
+          data: <?= $sanjuanCount_json ?>,
           backgroundColor: '#38bdf8',
-          borderRadius: 4
+          borderRadius: 4,
         }]
       },
       options: {
@@ -1126,7 +1149,7 @@ $conn->close();
             left: 10,
             right: 10
           }
-        }
+        },
       }
     });
 
@@ -1172,24 +1195,24 @@ $conn->close();
     });
 
     // Offenses per Barangay
-    const offenseData = <?= json_encode($offense_data) ?>;
-    let offenseChart;
+    const brgyIncident = <?= json_encode($brgyIncident_data) ?>;
+    let brgyIncidentChart;
 
     document.getElementById('barangayDropdown').addEventListener('change', function () {
       const barangay = this.value;
       if (!barangay) return;
 
-      const data = offenseData[barangay];
+      const data = brgyIncident[barangay];
       if (!data) {
         alert('No data available for this barangay');
         return;
       }
 
-      if (offenseChart) {
-        offenseChart.destroy();
+      if (brgyIncidentChart) {
+        brgyIncidentChart.destroy();
       }
 
-      offenseChart = new Chart(document.getElementById('offensePerBrgyChart').getContext('2d'), {
+      brgyIncidentChart = new Chart(document.getElementById('brgyIncidentChart').getContext('2d'), {
         type: 'bar',
         data: {
           labels: data.map(d => d.offense),
