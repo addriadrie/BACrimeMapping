@@ -2,6 +2,7 @@
 session_start();
 include('config.php');
 
+
 // Get the selected year
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
 // Condition for SQL queries
@@ -25,7 +26,7 @@ $year_condition = ($year === 'all') ? "" : "YEAR(`dateCommitted`) = $year";
 // PENDING CASES
 $pending_query = "SELECT COUNT(*) AS count FROM crimemapping WHERE"
   . (!empty($year_condition) ? " $year_condition AND" : "")
-  . " `caseStatus` = 'Under Inve'";
+  . " `caseStatus` = 'Under Investigation'";
 $pending_result = $conn->query($pending_query);
 $pending_cases = ($pending_result && $row = $pending_result->fetch_assoc()) ? (int) $row['count'] : 0;
 
@@ -138,17 +139,28 @@ while ($row = $incident_result->fetch_assoc()) {
   $incidentType[] = $row['incidentType'];
   $incidentCount[] = $row['crime_count'];
 }
-$incidentType = array_slice($incidentType, 0, 12);
-$incidentCount = array_slice($incidentCount, 0, 12);
+$incidentType = array_slice($incidentType, 0);
+$incidentCount = array_slice($incidentCount, 0);
 $incidentType_json = json_encode($incidentType);
 $incidentCount_json = json_encode($incidentCount);
 
-// CRIMES AGAINST CLASSIFICATION
-$against_query = "SELECT `crimeAgainst`, COUNT(*) AS crime_count FROM crimemapping WHERE"
-  . (!empty($year_condition) ? " $year_condition AND" : "")
-  . " `crimeAgainst` IN ('crimes against person', 'crimes against property', 'special laws')
-                  GROUP BY `crimeAgainst`
-                  ORDER BY crime_count DESC";
+// CRIME AGAINST CLASSIFICATION
+$against_query = "SELECT CASE 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%person%' THEN 'Crime Against Person' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%property%' THEN 'Crime Against Property' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%interest%' THEN 'Crime Against Interest' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%laws%' THEN 'Special Laws' 
+                  ELSE 'Others' 
+              END AS crimeAgainst, 
+              COUNT(*) AS crime_count FROM crimemapping "
+  . (!empty($year_condition) ? " WHERE $year_condition " : "")
+  . "GROUP BY CASE
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%person%' THEN 'Crime Against Person' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%property%' THEN 'Crime Against Property' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%interest%' THEN 'Crime Against Interest' 
+                  WHEN LOWER(TRIM(crimeAgainst)) LIKE '%laws%' THEN 'Special Laws' 
+                  ELSE 'Others' 
+                END";
 $against_result = $conn->query($against_query);
 $crimeAgainst = [];
 $againstCounts = [];
@@ -209,72 +221,113 @@ while ($row = $offense_result->fetch_assoc()) {
 }
 
 
-// UPLOAD CSV
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["uploadFile"])) {
-  if (isset($_SESSION['uploaded']) && $_SESSION['uploaded'] === true) {
+// ACTIVITY LOG
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  // Ensure user is logged in
+  if (!isset($_SESSION['account_id'])) {
+    echo "<script>alert('Error: You must be logged in to perform this action.');</script>";
     exit();
   }
 
-  $csvTemp = $_FILES['csvfile']['tmp_name'];
-  $getContent = file($csvTemp);
+  $accountID = $_SESSION['account_id'];
+  $currentDate = date("Y-m-d");
+  $currentTime = date("H:i:s");
 
-  if (!$getContent) {
-    echo "<script>alert('Error: Unable to read CSV file.');</script>";
-    exit();
-  }
-
-  // Insert into managedataset
-  $accountID = 1;
-  $datasetName = "sanjuan_" . date('Y-m-d_H:i:s');
-  $uploadDate = date('Y-m-d');
-  $uploadTime = date('H:i:s');
-  $newDataset = mysqli_query($conn, "INSERT INTO managedataset (accountID, datasetName, uploadDate, uploadTime) VALUES ('$accountID', '$datasetName', '$uploadDate', '$uploadTime')");
-
-  if (!$newDataset) {
-    echo "<script>alert('Error inserting dataset: " . mysqli_error($conn) . "');</script>";
-    exit();
-  }
-
-  $datasetID = mysqli_insert_id($conn);
-
-  // Insert into sampletable 
-  for ($i = 1; $i < count($getContent); $i++) {
-    $expRow = explode(",", $getContent[$i]);
-
-    $barangay = $expRow[0];
-    $typeOfPlace = $expRow[1];
-    $dateCommitted = $expRow[2];
-    $timeCommitted = $expRow[3];
-    $incidentType = $expRow[4];
-    $crimeAgainst = $expRow[5];
-    $crimeClassification = $expRow[6];
-    $offense = $expRow[7];
-    $offenseType = $expRow[8];
-    $caseStatus = $expRow[9];
-    $lat = $expRow[10];
-    $lng = $expRow[11];
-
-    $newData = mysqli_query($conn, "INSERT INTO sampletable (datasetID, barangay, typeOfPlace, dateCommitted, timeCommitted, incidentType, crimeAgainst, crimeClassification, offense, offenseType, caseStatus, lat, lng) VALUES ('$datasetID', '$barangay', '$typeOfPlace', '$dateCommitted', '$timeCommitted', '$incidentType', '$crimeAgainst', '$crimeClassification', '$offense', '$offenseType', '$caseStatus', '$lat', '$lng')");
-
-    if (!$newData) {
-      echo "<script>alert('Error inserting crime data: " . mysqli_error($conn) . "');</script>";
+  // Upload csv
+  if (isset($_POST["uploadFile"])) {
+    if (isset($_SESSION['uploaded']) && $_SESSION['uploaded'] === true) {
       exit();
     }
-  }
 
-  // Insert into activitylog
-  $newActivity = mysqli_query($conn, "INSERT INTO activitylog (accountID, activityType, activityDate, activityTime) VALUES ('$accountID', 'User admin uploaded a dataset', '$uploadDate', '$uploadTime')");
+    $csvTemp = $_FILES['csvfile']['tmp_name'];
+    $getContent = file($csvTemp);
 
-  if (!$newActivity) {
-    echo "<script>alert('Error inserting activity log: " . mysqli_error($conn) . "');</script>";
+    if (!$getContent) {
+      echo "<script>alert('Error: Unable to read CSV file.');</script>";
+      exit();
+    }
+
+    // Insert into managedataset
+    $datasetName = "sanjuan_" . date('Ymd_His');
+    $uploadDate = date('Y-m-d');
+    $uploadTime = date('H:i:s');
+    $newDataset = mysqli_query($conn, "INSERT INTO managedataset (accountID, datasetName, uploadDate, uploadTime) VALUES ('$accountID', '$datasetName', '$uploadDate', '$uploadTime')");
+
+    if (!$newDataset) {
+      echo "<script>alert('Error inserting dataset: " . mysqli_error($conn) . "');</script>";
+      exit();
+    }
+
+    $datasetID = mysqli_insert_id($conn);
+
+    // Insert into crime mapping
+    $stmt = $conn->prepare("INSERT INTO crimemapping (barangay, typeOfPlace, dateCommitted, timeCommitted, incidentType, crimeAgainst, crimeClassification, offense, offenseType, caseStatus, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for ($i = 1; $i < count($getContent); $i++) {
+      $expRow = str_getcsv($getContent[$i]);
+      if (count($expRow) >= 12) {
+        try {
+          $stmt->bind_param(
+            "ssssssssssdd",
+            $expRow[0],  // barangay
+            $expRow[1],  // typeOfPlace
+            $expRow[2],  // dateCommitted
+            $expRow[3],  // timeCommitted
+            $expRow[4],  // incidentType
+            $expRow[5],  // crimeAgainst
+            $expRow[6],  // crimeClassification
+            $expRow[7],  // offense
+            $expRow[8],  // offenseType
+            $expRow[9],  // caseStatus
+            $expRow[10], // lat
+            $expRow[11]  // lng
+          );
+
+          $stmt->execute();
+        } catch (Exception $e) {
+          error_log("Error inserting row $i: " . $e->getMessage());
+          continue;
+        }
+      }
+    }
+    $stmt->close();
+
+    // Insert into activity log
+    $activityType = "User admin uploaded a dataset";
+    $activityStmt = $conn->prepare("INSERT INTO activitylog (accountID, activityType, activityDate, activityTime) VALUES (?, ?, ?, ?)");
+    $activityStmt->bind_param("isss", $accountID, $activityType, $currentDate, $currentTime);
+    $activityStmt->execute();
+    $activityStmt->close();
+
+    $_SESSION['uploaded'] = true;
+    header("Location: " . $_SERVER['PHP_SELF'] . "?success=1");
     exit();
   }
 
-  $_SESSION['uploaded'] = true;
-  header("Location: " . $_SERVER['PHP_SELF'] . "?success=1");
-  exit();
+  // Generate Report
+  if (isset($_POST['log_activity'])) {
+    $activityType = "User admin generated a report";
+
+    $stmt = $conn->prepare("INSERT INTO activitylog (accountID, activityType, activityDate, activityTime) VALUES (?, ?, ?, ?)");
+    if (!$stmt) {
+      echo "Database error: " . $conn->error;
+      exit();
+    }
+
+    $stmt->bind_param("isss", $accountID, $activityType, $currentDate, $currentTime);
+
+    if ($stmt->execute()) {
+      echo "Activity logged successfully.";
+    } else {
+      echo "Error logging activity: " . $stmt->error;
+    }
+
+    $stmt->close();
+    $conn->close();
+    exit();
+  }
 }
 
+// Upload success
 if (isset($_GET['success']) && $_GET['success'] == 1) {
   echo "<script>alert('CSV file has been successfully uploaded and data inserted into the database.');</script>";
   unset($_SESSION['uploaded']); // Reset session flag
@@ -411,12 +464,12 @@ $conn->close();
 
     .card {
       background-color: var(--card-bg);
-      border: none;
       border-radius: 0.5rem;
       margin-bottom: 1rem;
       height: 100%;
       display: flex;
       flex-direction: column;
+      transition: all 0.3s ease;
     }
 
     .card-body {
@@ -424,6 +477,8 @@ $conn->close();
       flex: 1;
       display: flex;
       flex-direction: column;
+      border: 1px solid transparent;
+      transition: border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     }
 
     .card-title {
@@ -438,6 +493,12 @@ $conn->close();
       font-size: 1.5rem;
       font-weight: 600;
       margin: 0;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border: 2px solid #38bdf8;
+      box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.2);
     }
 
     select {
@@ -503,18 +564,6 @@ $conn->close();
 
     .logout-btn:hover {
       background-color: var(--border-color);
-    }
-
-    footer {
-      background-color: var(--card-bg);
-      color: var(--secondary-text);
-      font-size: 0.75rem;
-      padding: 1rem 0;
-      text-align: center;
-      position: relative;
-      bottom: 0;
-      width: 100%;
-      margin-top: 2rem;
     }
 
     #crimeAgainst {
@@ -609,6 +658,12 @@ $conn->close();
       background: var(--primary-text);
     }
 
+    .pill-toggle-option:hover {
+      background-color: rgba(56, 189, 248, 0.1);
+      color: var(--accent);
+      cursor: pointer;
+    }
+
     /* Responsive styles */
     @media (max-width: 768px) {
       .pill-toggle {
@@ -625,6 +680,55 @@ $conn->close();
         padding: 0.375rem 1rem;
         font-size: 0.813rem;
       }
+    }
+
+    .footer {
+      background-color: var(--background-primary);
+      padding: 1rem 48px;
+      width: 100%;
+      margin-top: 2rem;
+    }
+
+    .footer-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+    }
+
+    .footer-logo {
+      height: 180px;
+      width: auto;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .footer-links a {
+      color: #e2e8f0;
+      text-decoration: none;
+      font-weight: bold;
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+    }
+
+    .footer-separator {
+      height: 2px;
+      background-color: rgb(255, 255, 255);
+      margin: 0;
+    }
+
+    .footer-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+      color: #94a3b8;
+      padding: 16px 0 10px 0;
     }
   </style>
 </head>
@@ -844,10 +948,7 @@ $conn->close();
     </div>
   </div>
 
-  <footer>
-    <p>©Bantay Alisto Crime Mapping 2025. All Rights Reserved.</p>
-  </footer>
-
+  <script src="session-timeout.js"></script>
   <script>
     // DateTime
     function updateDateTime() {
@@ -910,6 +1011,14 @@ $conn->close();
     Chart.defaults.color = '#94a3b8';
     Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
     Chart.defaults.font.family = 'Inter, sans-serif';
+
+    const backgroundColors = <?= $crimeAgainst_json ?>.map((_, index) => {
+      const hue = 210; // Fixed hue for blue
+      const saturation = 50 + (index * 25) % 100; // Saturation varies from 50% to 100% in increments
+      const lightness = 30 + (index * 20) % 70; // Lightness varies from 30% to 100% (shades from darker to lighter)
+
+      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    });
 
     const chartOptions = {
       responsive: true,
@@ -1021,14 +1130,16 @@ $conn->close();
       }
     });
 
-    // Crime Against Chart
+    // Crime Against Pie Chart   
     new Chart(document.getElementById('crimeAgainst').getContext('2d'), {
       type: 'doughnut',
       data: {
         labels: <?= $crimeAgainst_json ?>,
         datasets: [{
           data: <?= $againstCounts_json ?>,
-          backgroundColor: ['#38bdf8', '#f59e0b', '#ef4444']
+          backgroundColor: backgroundColors,
+          // backgroundColor: ['#38bdf8', '#f59e0b', '#ef4444']
+          borderWidth: 1.25
         }]
       },
       options: {
@@ -1038,13 +1149,13 @@ $conn->close();
           legend: {
             position: 'bottom',
             labels: {
-              padding: 20
+              padding: 15
             }
           }
         },
         layout: {
           padding: {
-            top: 20,
+            top: 0,
             bottom: 20
           }
         }
@@ -1130,8 +1241,27 @@ $conn->close();
 
     // Function to generate report
     function printReport() {
-      window.print();
+      fetch(window.location.href, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          log_activity: 1
+        })
+      })
+        .then(response => response.text())
+        .then(data => {
+          console.log(data);
+          if (data.includes("Activity logged successfully")) {
+            window.print();
+          } else {
+            alert("Failed to log activity: " + data);
+          }
+        })
+        .catch(error => console.error('Error:', error));
     }
+
 
     window.logout = function () {
       // Clear all local storage
@@ -1160,6 +1290,20 @@ $conn->close();
     });
 
   </script>
+  <footer class="footer">
+    <div class="footer-top">
+      <img src="images/LOGO-3.png" alt="Bantay Alisto Logo" class="footer-logo">
+      <div class="footer-links">
+        <a href="#">Terms of Service</a>
+        <a href="#">Privacy Policy</a>
+      </div>
+    </div>
+    <div class="footer-separator"></div>
+    <div class="footer-bottom">
+      <span>© 2025 — All Rights Reserved.</span>
+      <span>Bantay Alisto Crime Mapping</span>
+    </div>
+  </footer>
 </body>
 
 </html>
