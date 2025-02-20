@@ -2,7 +2,6 @@
 session_start();
 include('config.php');
 
-
 // Get the selected year
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
 // Condition for SQL queries
@@ -21,7 +20,6 @@ if ($dateFilter_result->num_rows > 0) {
 }
 $year = isset($_GET['year']) ? $_GET['year'] : 'all';
 $year_condition = ($year === 'all') ? "" : "YEAR(`dateCommitted`) = $year";
-
 
 // PENDING CASES
 $pending_query = "SELECT COUNT(*) AS count FROM crimemapping WHERE"
@@ -58,9 +56,9 @@ $volume_query = "SELECT (SUM(CASE WHEN `crimeClassification` = 'index' THEN 1 EL
 $volume_result = $conn->query($volume_query);
 $crime_volume = ($volume_result && $row = $volume_result->fetch_assoc()) ? number_format($row['count'], 2) : "0.00";
 
-// CRIME RATE = (TOTAL/POPULATION)*100000
+// CRIME RATE = (TOTAL/POPULATION)*1000
 $population = 126347; // as of 2020  
-$crime_rate = ($population > 0) ? ($total_cases / $population) * 100000 : 0;
+$crime_rate = ($population > 0) ? ($total_cases / $population) * 1000 : 0;
 $crime_rate = number_format($crime_rate, 2);
 
 // CLEARANCE EFFICIENCY = (CLEARED/TOTAL)*100
@@ -215,7 +213,6 @@ while ($row = $brgyIncident_result->fetch_assoc()) {
   ];
 }
 
-
 // ACTIVITY LOG
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   // Ensure user is logged in
@@ -230,72 +227,90 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
   // Upload csv
   if (isset($_POST["uploadFile"])) {
-    if (isset($_SESSION['uploaded']) && $_SESSION['uploaded'] === true) {
+    header('Content-Type: application/json');
+
+    if (!isset($_FILES['csvfile']) || $_FILES['csvfile']['error'] !== UPLOAD_ERR_OK) {
+      echo json_encode(['status' => 'error', 'message' => 'File upload failed']);
       exit();
     }
 
     $csvTemp = $_FILES['csvfile']['tmp_name'];
-    $getContent = file($csvTemp);
+    $csvName = $_FILES['csvfile']['name'];
+    $fileExt = strtolower(pathinfo($csvName, PATHINFO_EXTENSION));
 
-    if (!$getContent) {
-      echo "<script>alert('Error: Unable to read CSV file.');</script>";
+    // Validate file extension
+    if ($fileExt !== 'csv') {
+      echo json_encode(['status' => 'error', 'message' => 'Only CSV files are allowed']);
       exit();
     }
 
-    // Insert into managedataset
-    $datasetName = "sanjuan_" . date('Ymd_His');
-    $uploadDate = date('Y-m-d');
-    $uploadTime = date('H:i:s');
-    $newDataset = mysqli_query($conn, "INSERT INTO managedataset (accountID, datasetName, uploadDate, uploadTime) VALUES ('$accountID', '$datasetName', '$uploadDate', '$uploadTime')");
+    try {
+      // Validate file content
+      $file = fopen($csvTemp, 'r');
+      if ($file === false) {
+        throw new Exception('Unable to read file');
+      }
 
-    if (!$newDataset) {
-      echo "<script>alert('Error inserting dataset: " . mysqli_error($conn) . "');</script>";
-      exit();
-    }
+      $hasHeader = isset($_POST['hasHeader']) && $_POST['hasHeader'] === '1';
+      $firstLine = fgetcsv($file);
 
-    $datasetID = mysqli_insert_id($conn);
+      if ($firstLine === false || count($firstLine) < 12) {
+        throw new Exception('Invalid CSV format. File must contain at least 12 columns');
+      }
 
-    // Insert into crime mapping
-    $stmt = $conn->prepare("INSERT INTO crimemapping (barangay, typeOfPlace, dateCommitted, timeCommitted, incidentType, crimeAgainst, crimeClassification, offense, offenseType, caseStatus, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    for ($i = 1; $i < count($getContent); $i++) {
-      $expRow = str_getcsv($getContent[$i]);
-      if (count($expRow) >= 12) {
-        try {
-          $stmt->bind_param(
-            "ssssssssssdd",
-            $expRow[0],  // barangay
-            $expRow[1],  // typeOfPlace
-            $expRow[2],  // dateCommitted
-            $expRow[3],  // timeCommitted
-            $expRow[4],  // incidentType
-            $expRow[5],  // crimeAgainst
-            $expRow[6],  // crimeClassification
-            $expRow[7],  // offense
-            $expRow[8],  // offenseType
-            $expRow[9],  // caseStatus
-            $expRow[10], // lat
-            $expRow[11]  // lng
-          );
+      // Process the file
+      $startRow = $hasHeader ? 1 : 0;
 
-          $stmt->execute();
-        } catch (Exception $e) {
-          error_log("Error inserting row $i: " . $e->getMessage());
+      $stmt = $conn->prepare("INSERT INTO crimemapping (barangay, typeOfPlace, dateCommitted, timeCommitted, incidentType, crimeAgainst, crimeClassification, offense, offenseType, caseStatus, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+      if (!$stmt) {
+        throw new Exception('Database preparation failed: ' . $conn->error);
+      }
+
+      $rowIndex = 0;
+      $insertedRows = 0;
+
+      while (($row = fgetcsv($file)) !== false) {
+        if ($rowIndex++ < $startRow)
           continue;
+
+        if (count($row) >= 12) {
+          $stmt->bind_param("ssssssssssdd", $row[0], $row[1], $row[2], $row[3], $row[4], $row[5], $row[6], $row[7], $row[8], $row[9], $row[10], $row[11]);
+          if ($stmt->execute()) {
+            $insertedRows++;
+          }
         }
       }
+
+      fclose($file);
+      $stmt->close();
+
+      // Log the activity
+      if (isset($_SESSION['account_id'])) {
+        $activityType = "User admin uploaded a dataset";
+        $currentDate = date("Y-m-d");
+        $currentTime = date("H:i:s");
+
+        $logStmt = $conn->prepare("INSERT INTO activitylog (accountID, activityType, activityDate, activityTime) VALUES (?, ?, ?, ?)");
+        $logStmt->bind_param("isss", $_SESSION['account_id'], $activityType, $currentDate, $currentTime);
+        $logStmt->execute();
+        $logStmt->close();
+      }
+
+      echo json_encode([
+        'status' => 'success',
+        'message' => "Successfully uploaded CSV file. Inserted $insertedRows rows.",
+        'rowsInserted' => $insertedRows
+      ]);
+      exit();
+
+    } catch (Exception $e) {
+      echo json_encode([
+        'status' => 'error',
+        'message' => 'Error processing file: ' . $e->getMessage()
+      ]);
+      exit();
     }
-    $stmt->close();
-
-    // Insert into activity log
-    $activityType = "User admin uploaded a dataset";
-    $activityStmt = $conn->prepare("INSERT INTO activitylog (accountID, activityType, activityDate, activityTime) VALUES (?, ?, ?, ?)");
-    $activityStmt->bind_param("isss", $accountID, $activityType, $currentDate, $currentTime);
-    $activityStmt->execute();
-    $activityStmt->close();
-
-    $_SESSION['uploaded'] = true;
-    header("Location: " . $_SERVER['PHP_SELF'] . "?success=1");
-    exit();
   }
 
   // Generate Report
@@ -775,31 +790,59 @@ $conn->close();
         <div class="pill-toggle">
           <form method="GET" id="yearForm" class="pill-toggle-group">
             <input type="radio" id="all" name="year" value="all" <?= ($year == 'all') ? 'checked' : '' ?>>
-            <label for="all" class="pill-toggle-option" style="color: var(--accent)" onclick="submitForm('all')">All
+            <label for="all" class="pill-toggle-option" style="color: var(--accent)" onclick="submitYearForm('all')">All
               Time</label>
 
             <?php foreach ($years as $yr): ?>
               <input type="radio" id="year_<?= $yr ?>" name="year" value="<?= $yr ?>" <?= ($year == $yr) ? 'checked' : '' ?>>
               <label for="year_<?= $yr ?>" class="pill-toggle-option year-value"
-                onclick="submitForm('<?= $yr ?>')"><?= $yr ?></label>
+                onclick="submitYearForm('<?= $yr ?>')"><?= $yr ?></label>
             <?php endforeach; ?>
           </form>
         </div>
       </div>
+
       <div class="d-flex gap-4 ms-auto align-items-center">
-        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data"
-          id="uploadForm">
-          <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;"
-            onchange="document.getElementById('uploadForm').submit();">
+        <!-- Upload Button -->
+        <div class="d-flex gap-4 ms-auto align-items-center">
+          <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>"
+            enctype="multipart/form-data" id="uploadForm">
+            <input type="file" name="csvfile" accept=".csv" id="csvfile" style="display: none;">
+            <input type="hidden" name="hasHeader" id="hasHeaderInput" value="1">
+            <input type="hidden" name="uploadFile" value="1">
+          </form>
           <a href="#" class="text-decoration-none d-flex align-items-center gap-2" style="color: var(--secondary-text);"
-            onclick="document.getElementById('csvfile').click();">
+            onclick="triggerFileInput()">
             <i class="bi bi-upload"></i>
             <span style="text-decoration: underline;">Upload CSV</span>
           </a>
+        </div>
+        <!-- Modal -->
+        <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content" style="background-color: var(--card-bg); color: var(--primary-text);">
+              <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabel">Upload CSV File</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                  aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="mb-3">
+                  <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="hasHeaderCheckbox" checked>
+                    <label class="form-check-label" for="hasHeaderCheckbox">File contains header row</label>
+                  </div>
+                </div>
+                <div id="selectedFileName" class="text-secondary"></div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitFileUpload()">Upload</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-          </button>
-          <input type="hidden" name="uploadFile" value="1">
-        </form>
         <a href="#" class="text-decoration-none d-flex align-items-center gap-2" style="color: var(--secondary-text);"
           onclick="printReport()">
           <i class="bi bi-file-earmark-text"></i>
@@ -855,7 +898,7 @@ $conn->close();
       <div class="col-lg-3 col-md-6">
         <div class="card">
           <div class="card-body">
-            <h6 class="card-title">Crime Rate <span style="font-size: 0.75rem">(per 100,000)</span></h6>
+            <h6 class="card-title">Crime Rate <span style="font-size: 0.75rem">(per 1,000)</span></h6>
             <p class="card-text"><?= $crime_rate ?>%</p>
           </div>
         </div>
@@ -970,64 +1013,9 @@ $conn->close();
   </div>
 
   <script src="session-timeout.js"></script>
+
+  <!-- Chart Script -->
   <script>
-    // DateTime
-    function updateDateTime() {
-      const dt = new Date();
-      const options = {
-        timeZone: "Asia/Manila",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-      };
-      document.getElementById("datetime").innerHTML = dt.toLocaleString("en-US", options) + " PHT";
-    }
-    updateDateTime();
-    setInterval(updateDateTime, 60000);
-
-    function submitForm(selectedYear) {
-      // Remove active class from all options
-      document.querySelectorAll('.pill-toggle-option').forEach(option => {
-        option.classList.remove('active');
-      });
-
-      // Add active class to selected option
-      const selectedOption = selectedYear === 'all'
-        ? document.querySelector('label[for="all"]')
-        : document.querySelector(`label[for="year_${selectedYear}"]`);
-
-      if (selectedOption) {
-        selectedOption.classList.add('active');
-      }
-
-      // Set the radio input value
-      const radioInput = selectedYear === 'all'
-        ? document.getElementById('all')
-        : document.getElementById(`year_${selectedYear}`);
-
-      if (radioInput) {
-        radioInput.checked = true;
-      }
-
-      // Submit the form
-      document.getElementById('yearForm').submit();
-    }
-
-    // Set initial active state based on PHP variable
-    document.addEventListener('DOMContentLoaded', function () {
-      const currentYear = '<?= $year ?>';
-      const activeOption = currentYear === 'all'
-        ? document.querySelector('label[for="all"]')
-        : document.querySelector(`label[for="year_${currentYear}"]`);
-
-      if (activeOption) {
-        activeOption.classList.add('active');
-      }
-    });
-
     // Chart Configuration
     Chart.defaults.color = '#94a3b8';
     Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
@@ -1190,75 +1178,199 @@ $conn->close();
       const li = document.createElement('li');
       li.textContent = `${item.rank}. ${item.barangay}`;
       brgyList.appendChild(li);
-    });
+    });    
+  </script>
 
-    // Offenses per Barangay
-    const brgyIncident = <?= json_encode($brgyIncident_data) ?>;
-    let brgyIncidentChart;
+  <script>
+    // DateTime
+    function updateDateTime() {
+      const dt = new Date();
+      const options = {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      };
+      document.getElementById("datetime").innerHTML = dt.toLocaleString("en-US", options) + " PHT";
+    }
+    updateDateTime();
+    setInterval(updateDateTime, 60000);
 
-    document.getElementById('barangayDropdown').addEventListener('change', function () {
-      const barangay = this.value;
-      if (!barangay) return;
+    // Function to handle year selection
+    function submitYearForm(selectedYear) {
+      // Remove active class from all options
+      document.querySelectorAll('.pill-toggle-option').forEach(option => {
+        option.classList.remove('active');
+      });
 
-      const data = brgyIncident[barangay];
-      if (!data) {
-        alert('No data available for this barangay');
-        return;
+      // Add active class to selected option
+      const selectedOption = selectedYear === 'all'
+        ? document.querySelector('label[for="all"]')
+        : document.querySelector(`label[for="year_${selectedYear}"]`);
+
+      if (selectedOption) {
+        selectedOption.classList.add('active');
       }
 
-      if (brgyIncidentChart) {
-        brgyIncidentChart.destroy();
+      // Set the radio input value
+      const radioInput = selectedYear === 'all'
+        ? document.getElementById('all')
+        : document.getElementById(`year_${selectedYear}`);
+
+      if (radioInput) {
+        radioInput.checked = true;
       }
 
-      brgyIncidentChart = new Chart(document.getElementById('brgyIncidentChart').getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: data.map(d => d.offense),
-          datasets: [{
-            label: 'Number of Crimes',
-            data: data.map(d => d.crime_count),
-            backgroundColor: '#38bdf8',
-            borderRadius: 4
-          }]
-        },
-        options: {
-          ...chartOptions,
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
+      // Submit the form
+      document.getElementById('yearForm').submit();
+    }
+
+    // Function to handle file upload submission
+    function submitFileUpload() {
+      const hasHeader = document.getElementById('hasHeaderCheckbox').checked;
+      document.getElementById('hasHeaderInput').value = hasHeader ? "1" : "0";
+
+      const form = document.getElementById('uploadForm');
+      const formData = new FormData(form);
+
+      // Show loading state
+      const submitButton = document.querySelector('.modal-footer .btn-primary');
+      const originalText = submitButton.textContent;
+      submitButton.textContent = 'Uploading...';
+      submitButton.disabled = true;
+
+      // Submit the form
+      fetch(form.action, {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.text())
+        .then(data => {
+          let result;
+          try {
+            result = JSON.parse(data);
+          } catch (e) {
+            console.error('Invalid JSON response:', data);
+            throw new Error('Server returned invalid response');
+          }
+
+          if (result.status === 'success') {
+            uploadModal.hide();
+            alert(result.message);
+            location.reload();
+          } else {
+            throw new Error(result.message || 'Upload failed');
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Error uploading file: ' + error.message);
+        })
+        .finally(() => {
+          // Reset button state
+          submitButton.textContent = originalText;
+          submitButton.disabled = false;
+        });
+    }
+
+    // Set initial active state based on PHP variable
+    document.addEventListener('DOMContentLoaded', function () {
+      const currentYear = '<?= $year ?>';
+      const activeOption = currentYear === 'all'
+        ? document.querySelector('label[for="all"]')
+        : document.querySelector(`label[for="year_${currentYear}"]`);
+
+      if (activeOption) {
+        activeOption.classList.add('active');
+      }
+
+      // Initialize uploadModal
+      uploadModal = new bootstrap.Modal(document.getElementById('uploadModal'));
+
+      // Set up file input listener
+      document.getElementById('csvfile').addEventListener('change', function (e) {
+        if (this.files.length > 0) {
+          document.getElementById('selectedFileName').textContent = 'Selected file: ' + this.files[0].name;
+          uploadModal.show();
+        }
+      });
+
+      // Offenses per Barangay
+      const brgyIncident = <?= json_encode($brgyIncident_data) ?>;
+
+      // Set up barangay dropdown listener
+      document.getElementById('barangayDropdown').addEventListener('change', function () {
+        const barangay = this.value;
+        if (!barangay) return;
+
+        const data = brgyIncident[barangay];
+        if (!data) {
+          alert('No data available for this barangay');
+          return;
+        }
+
+        if (brgyIncidentChart) {
+          brgyIncidentChart.destroy();
+        }
+
+        brgyIncidentChart = new Chart(document.getElementById('brgyIncidentChart').getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: data.map(d => d.offense),
+            datasets: [{
+              label: 'Number of Crimes',
+              data: data.map(d => d.crime_count),
+              backgroundColor: '#38bdf8',
+              borderRadius: 4
+            }]
           },
-          scales: {
-            x: {
-              beginAtZero: true,
-              grid: {
-                color: 'rgba(255, 255, 255, 0.1)'
-              }
+          options: {
+            ...chartOptions,
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
             },
-            y: {
-              grid: {
-                display: false
+            scales: {
+              x: {
+                beginAtZero: true,
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.1)'
+                }
               },
-              ticks: {
-                callback: function (value) {
-                  const label = this.getLabelForValue(value);
-                  if (label.length > 40) {
-                    return label.substr(0, 37) + '...';
-                  }
-                  return label;
+              y: {
+                grid: {
+                  display: false
                 },
-                maxRotation: 0,
-                minRotation: 0,
-                font: {
-                  size: 11
+                ticks: {
+                  callback: function (value) {
+                    const label = this.getLabelForValue(value);
+                    if (label.length > 40) {
+                      return label.substr(0, 37) + '...';
+                    }
+                    return label;
+                  },
+                  maxRotation: 0,
+                  minRotation: 0,
+                  font: {
+                    size: 11
+                  }
                 }
               }
             }
           }
-        }
+        });
       });
     });
+
+    // Function to display file upload modal
+    function triggerFileInput() {
+      document.getElementById('csvfile').click();
+    }
 
     // Function to generate report
     function printReport() {
@@ -1283,7 +1395,7 @@ $conn->close();
         .catch(error => console.error('Error:', error));
     }
 
-
+    // Logout function
     window.logout = function () {
       // Clear all local storage
       localStorage.clear();
@@ -1304,13 +1416,12 @@ $conn->close();
           window.location.href = "log-in.php";
         });
     };
-    document.querySelectorAll('.pill-toggle-option').forEach(option => {
-      option.addEventListener('click', function () {
-        this.closest('form').submit();
-      });
-    });
 
+    // Global variables
+    let uploadModal;
+    let brgyIncidentChart;
   </script>
+
   <footer class="footer">
     <div class="footer-top">
       <img src="images/LOGO-3.png" alt="Bantay Alisto Logo" class="footer-logo">
